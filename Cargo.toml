@@ -10,3 +10,10 @@ pedantic = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 
 [dependencies]
+bytemuck = "1.25.2"
+egui = "0.36.2"
+egui-wgpu = { version = "0.36.2", features = ["winit"] }
+egui-winit = "0.36.2"
+pollster = "0.3"
+wgpu = "30.0.1"
+winit = "0.30.13"
