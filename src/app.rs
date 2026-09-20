@@ -10,7 +10,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
-use crate::canvas::{Canvas, PixelColor};
+use crate::canvas::Canvas;
 use crate::gpu::CanvasGpu;
 use crate::gui::{draw_canvas_panel, draw_side_panel};
 
@@ -65,28 +65,7 @@ impl App {
                 self.canvas.height(),
             );
 
-            #[allow(
-                clippy::cast_possible_truncation,
-                clippy::cast_precision_loss,
-                clippy::cast_sign_loss
-            )]
-            // Handle canvas clicks.
-            if let Some(response) = canvas_response
-                && response.clicked()
-                && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
-            {
-                // The image rect in logical points.
-                let rect = response.rect;
-
-                // Convert logical-point position to canvas pixel index.
-                let normalized_x = (pos.x - rect.min.x) / rect.width();
-                let normalized_y = (pos.y - rect.min.y) / rect.height();
-                let px = (normalized_x * self.canvas.width() as f32) as u32;
-                let py = (normalized_y * self.canvas.height() as f32) as u32;
-
-                self.canvas.set_pixel(px, py, PixelColor::BLACK);
-                self.canvas_dirty = true;
-            }
+            self.canvas_dirty = self.canvas.handle_input(ui, canvas_response);
         });
 
         // Upload CPU canvas to GPU if it's changed.

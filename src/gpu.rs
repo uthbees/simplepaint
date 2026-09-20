@@ -1,3 +1,5 @@
+//! This module handles interactions with the GPU that are too complex to fit into app.rs.
+
 use crate::canvas::Canvas;
 use egui_wgpu::RenderState;
 

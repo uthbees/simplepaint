@@ -67,7 +67,7 @@ pub fn draw_canvas_panel(
             let sized_texture = egui::load::SizedTexture::new(tid, display_size);
 
             let response = ui
-                .add(egui::Image::from_texture(sized_texture).sense(egui::Sense::click_and_drag()));
+                .add(egui::Image::from_texture(sized_texture).sense(egui::Sense::DRAG));
             canvas_response = Some(response);
         } else {
             ui.centered_and_justified(|ui| {
