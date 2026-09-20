@@ -1,5 +1,4 @@
 use bytemuck::{Pod, Zeroable};
-use egui::Pos2;
 use std::cmp::PartialEq;
 use std::ops::Add;
 
@@ -44,6 +43,8 @@ pub struct Canvas {
     height: u32,
     /// Row-major layout: pixel `(x, y)` is at index `y * width + x`.
     pixels: Vec<PixelColor>,
+    /// If a canvas mouse drag is active, the last position in the current drag, otherwise None.
+    last_drag_pos: Option<PxCoords>,
 }
 
 impl Add for PxCoords {
@@ -71,6 +72,7 @@ impl Canvas {
             width,
             height,
             pixels: vec![PixelColor::WHITE; pixel_count],
+            last_drag_pos: None,
         }
     }
 
@@ -114,18 +116,28 @@ impl Canvas {
         ui: &mut egui::Ui,
         canvas_response: Option<egui::Response>,
     ) -> bool {
-        if let Some(response) = canvas_response
-            && response.dragged()
-            && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
+        let Some(response) = canvas_response else {
+            return false;
+        };
+
+        if response.drag_stopped() {
+            self.last_drag_pos = None;
+        } else if response.dragged()
+            && let Some(cursor_pos) = ui.input(|i| i.pointer.interact_pos())
         {
-            let delta = response.drag_delta();
             let rect = response.rect;
 
-            let relative_pos = (pos.x - rect.min.x, pos.y - rect.min.y);
-            let pos_px = self.points_to_px(relative_pos.0, relative_pos.1, rect);
-            let delta_px = self.points_to_px(delta.x, delta.y, rect);
+            let relative_cursor_pos = (cursor_pos.x - rect.min.x, cursor_pos.y - rect.min.y);
+            let pos_px = self.points_to_px(relative_cursor_pos.0, relative_cursor_pos.1, rect);
 
-            self.draw_line(pos_px, pos_px + delta_px, 1, PixelColor::BLACK);
+            self.draw_line(
+                pos_px,
+                self.last_drag_pos.unwrap_or(pos_px),
+                1,
+                PixelColor::BLACK,
+            );
+            self.last_drag_pos = Some(pos_px);
+
             // testing lines
             // self.draw_line(
             //     PxCoords { x: 1, y: 1 },
@@ -312,9 +324,9 @@ impl Canvas {
     fn fill_scanline(&mut self, scan_y: i32, start_x: i32, end_x: i32, color: PixelColor) {
         if start_x <= end_x
             && end_x >= 0
-            && start_x <= self.width.cast_signed()
+            && start_x < self.width.cast_signed()
             && scan_y >= 0
-            && scan_y <= self.height.cast_signed()
+            && scan_y < self.height.cast_signed()
         {
             let start_x = i32::max(start_x, 0).cast_unsigned();
             let end_x = i32::min(end_x, self.width.cast_signed()).cast_unsigned();
