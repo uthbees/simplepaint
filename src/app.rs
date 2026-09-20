@@ -173,7 +173,6 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::RedrawRequested => {
                 self.render_frame(event_loop);
-                return;
             }
             WindowEvent::Resized(new_size) => {
                 if let (Some(w), Some(h)) = (
@@ -183,19 +182,17 @@ impl ApplicationHandler for App {
                     state.painter.on_window_resized(ViewportId::ROOT, w, h);
                     self.render_frame(event_loop);
                 }
-                return;
             }
             WindowEvent::CloseRequested => {
                 event_loop.exit();
-                return;
             }
-            _ => {}
-        }
-
-        // Forward all other events to egui.
-        let egui_response = state.egui_state.on_window_event(&state.window, &event);
-        if egui_response.repaint {
-            state.window.request_redraw();
+            _ => {
+                // Forward all other events to egui.
+                let egui_response = state.egui_state.on_window_event(&state.window, &event);
+                if egui_response.repaint {
+                    state.window.request_redraw();
+                }
+            }
         }
     }
 }
