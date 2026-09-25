@@ -201,7 +201,7 @@ impl CanvasBuffer {
             self.dirty = true;
 
             let start_x = i32::max(start_x, 0).cast_unsigned();
-            let end_x = i32::min(end_x, self.width.cast_signed()).cast_unsigned();
+            let end_x = i32::min(end_x, self.width.cast_signed() - 1).cast_unsigned();
 
             let row_start_idx = scan_y.cast_unsigned() * self.width;
             let start_idx = (row_start_idx + start_x) as usize;
