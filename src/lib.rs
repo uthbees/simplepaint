@@ -12,6 +12,7 @@ use egui_wgpu::winit::Painter;
 use egui_wgpu::{RenderState, WgpuConfiguration};
 use egui_winit::State as EguiWinitState;
 use winit::application::ApplicationHandler;
+use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
@@ -48,6 +49,7 @@ impl ApplicationHandler for App {
                 .create_window(window_attrs)
                 .expect("Failed to create window"),
         );
+        window.set_min_inner_size(Some(LogicalSize::new(300.0, 300.0)));
 
         // Build egui context and winit state.
         let viewport_id = ViewportId::ROOT;
