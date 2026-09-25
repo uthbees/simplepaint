@@ -41,8 +41,8 @@ impl CanvasPos {
         let final_canvas_uv_x = (base_canvas_uv_x / zoom) - pan_uv_x + 0.5;
         let final_canvas_uv_y = (base_canvas_uv_y / zoom) - pan_uv_y + 0.5;
 
-        let x_px = (final_canvas_uv_x * canvas.width() as f32) as i32;
-        let y_px = (final_canvas_uv_y * canvas.height() as f32) as i32;
+        let x_px = (final_canvas_uv_x * canvas.width() as f32).floor() as i32;
+        let y_px = (final_canvas_uv_y * canvas.height() as f32).floor() as i32;
 
         CanvasPos { x: x_px, y: y_px }
     }
