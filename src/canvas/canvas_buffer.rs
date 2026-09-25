@@ -1,70 +1,17 @@
-use bytemuck::{Pod, Zeroable};
-use std::cmp::PartialEq;
-use std::ops::Add;
-
-/// A single RGBA pixel stored as four `u8` bytes.
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-pub struct PixelColor {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-    pub a: u8,
-}
-
-impl PixelColor {
-    pub const WHITE: Self = Self {
-        r: 255,
-        g: 255,
-        b: 255,
-        a: 255,
-    };
-    pub const BLACK: Self = Self {
-        r: 0,
-        g: 0,
-        b: 0,
-        a: 255,
-    };
-}
-
-#[derive(Copy, Clone, Eq, Debug)]
-/// A position in pixels relative to the canvas.
-///
-/// Note that positions off the canvas are valid values for `PxCoords`. This includes
-/// negative coordinates, even though all positions displayed on the canvas are positive.
-struct PxCoords {
-    x: i32,
-    y: i32,
-}
+use crate::canvas::PixelColor;
+use crate::canvas::canvas_pos::CanvasPos;
 
 /// Stores and manages the state of the canvas. Data is stored in a CPU-side 2D pixel buffer.
-pub struct Canvas {
+pub struct CanvasBuffer {
     width: u32,
     height: u32,
     /// Row-major layout: pixel `(x, y)` is at index `y * width + x`.
     pixels: Vec<PixelColor>,
-    /// If a canvas mouse drag is active, the last position in the current drag, otherwise None.
-    last_drag_pos: Option<PxCoords>,
+    /// Whether the buffer has been modified since the last GPU upload.
+    pub dirty: bool,
 }
 
-impl Add for PxCoords {
-    type Output = PxCoords;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        PxCoords {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
-    }
-}
-
-impl PartialEq for PxCoords {
-    fn eq(&self, other: &Self) -> bool {
-        self.x == other.x && self.y == other.y
-    }
-}
-
-impl Canvas {
+impl CanvasBuffer {
     /// Creates a new canvas filled with a solid white background.
     pub fn new(width: u32, height: u32) -> Self {
         let pixel_count = (width * height) as usize;
@@ -72,7 +19,7 @@ impl Canvas {
             width,
             height,
             pixels: vec![PixelColor::WHITE; pixel_count],
-            last_drag_pos: None,
+            dirty: false,
         }
     }
 
@@ -91,96 +38,8 @@ impl Canvas {
         bytemuck::cast_slice(&self.pixels)
     }
 
-    #[must_use]
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_precision_loss,
-        clippy::cast_sign_loss
-    )]
-    /// Converts a position from logical points to pixel coordinates.
-    ///
-    /// * `pos` - The position to convert, in logical points.
-    /// * `canvas_rect` - The egui canvas rectangle.
-    fn points_to_px(&self, pos_x: f32, pos_y: f32, canvas_rect: egui::Rect) -> PxCoords {
-        let x_percent = pos_x / canvas_rect.width();
-        let y_percent = pos_y / canvas_rect.height();
-        let x_px = (x_percent * self.width() as f32) as i32;
-        let y_px = (y_percent * self.height() as f32) as i32;
-        PxCoords { x: x_px, y: y_px }
-    }
-
-    #[must_use]
-    /// Handles input to the canvas. Returns true if the canvas is modified, otherwise false.
-    pub fn handle_input(
-        &mut self,
-        ui: &mut egui::Ui,
-        canvas_response: Option<egui::Response>,
-    ) -> bool {
-        let Some(response) = canvas_response else {
-            return false;
-        };
-
-        if response.drag_stopped() {
-            self.last_drag_pos = None;
-        } else if response.dragged()
-            && let Some(cursor_pos) = ui.input(|i| i.pointer.interact_pos())
-        {
-            let rect = response.rect;
-
-            let relative_cursor_pos = (cursor_pos.x - rect.min.x, cursor_pos.y - rect.min.y);
-            let pos_px = self.points_to_px(relative_cursor_pos.0, relative_cursor_pos.1, rect);
-
-            self.draw_line(
-                pos_px,
-                self.last_drag_pos.unwrap_or(pos_px),
-                1,
-                PixelColor::BLACK,
-            );
-            self.last_drag_pos = Some(pos_px);
-
-            // testing lines
-            // self.draw_line(
-            //     PxCoords { x: 1, y: 1 },
-            //     PxCoords { x: 1, y: 1 },
-            //     1,
-            //     PixelColor::BLACK,
-            // );
-            // self.draw_line(
-            //     PxCoords { x: 10, y: 10 },
-            //     PxCoords { x: 50, y: 50 },
-            //     1,
-            //     PixelColor::BLACK,
-            // );
-            // self.draw_line(
-            //     PxCoords { x: 10, y: 10 },
-            //     PxCoords { x: 25, y: 50 },
-            //     1,
-            //     PixelColor::BLACK,
-            // );
-            // self.draw_line(
-            //     PxCoords { x: 10, y: 10 },
-            //     PxCoords { x: 50, y: 25 },
-            //     1,
-            //     PixelColor::BLACK,
-            // );
-            return true;
-        }
-
-        false
-    }
-
-    #[allow(clippy::cast_sign_loss)]
-    /// Sets the pixel at `(x, y)` to the given color.
-    ///
-    /// Coordinates outside the canvas are ignored.
-    fn set_pixel(&mut self, x: i32, y: i32, color: PixelColor) {
-        if x >= 0 && x < self.width.cast_signed() && y >= 0 && y < self.height.cast_signed() {
-            self.pixels[(y * self.width.cast_signed() + x) as usize] = color;
-        }
-    }
-
     /// Draws a line from `pos1` to `pos2` with the specified thickness and color.
-    fn draw_line(&mut self, pos1: PxCoords, pos2: PxCoords, radius: u32, color: PixelColor) {
+    pub fn draw_line(&mut self, pos1: CanvasPos, pos2: CanvasPos, radius: u32, color: PixelColor) {
         let radius = radius.cast_signed();
         let dx = (pos1.x - pos2.x).abs();
         let dy = (pos1.y - pos2.y).abs();
@@ -263,7 +122,7 @@ impl Canvas {
     ///
     /// Note: The radius is the distance from the center to the edge, so a radius 0 circle is
     /// a single pixel, and a radius 1 circle has a diameter of 3.
-    fn fill_circle(&mut self, center: PxCoords, radius: u32, color: PixelColor) {
+    pub fn fill_circle(&mut self, center: CanvasPos, radius: u32, color: PixelColor) {
         let radius = radius.cast_signed();
         for delta_y in -radius..radius {
             let y = center.y + delta_y;
@@ -279,7 +138,7 @@ impl Canvas {
     // /// Fills a convex polygon with a solid color using a scanline approach.
     // ///
     // /// Note: Panics if `vertices` has less than two vertexes.
-    // fn fill_convex_polygon(&mut self, vertices: &[PxCoords], color: PixelColor) {
+    // pub fn fill_convex_polygon(&mut self, vertices: &[PxCoords], color: PixelColor) {
     //     let vertex_count = u32::try_from(vertices.len())
     //         .expect("Should be passed a reasonable number of vertices");
     //     assert!(vertex_count >= 2);
@@ -318,6 +177,17 @@ impl Canvas {
     //     }
     // }
 
+    #[allow(clippy::cast_sign_loss)]
+    /// Sets the pixel at `(x, y)` to the given color.
+    ///
+    /// Coordinates outside the canvas are ignored.
+    pub fn set_pixel(&mut self, x: i32, y: i32, color: PixelColor) {
+        if x >= 0 && x < self.width.cast_signed() && y >= 0 && y < self.height.cast_signed() {
+            self.dirty = true;
+            self.pixels[(y * self.width.cast_signed() + x) as usize] = color;
+        }
+    }
+
     /// Fills a scanline from `start_x` to `end_x` with a solid color.
     ///
     /// Writes outside the canvas are ignored.
@@ -328,6 +198,8 @@ impl Canvas {
             && scan_y >= 0
             && scan_y < self.height.cast_signed()
         {
+            self.dirty = true;
+
             let start_x = i32::max(start_x, 0).cast_unsigned();
             let end_x = i32::min(end_x, self.width.cast_signed()).cast_unsigned();
 
@@ -346,7 +218,7 @@ impl Canvas {
     /// Given the y coordinate of a horizontal scanline and a line defined by two vertices, finds the
     /// intersection of the two lines.
     /// Returns None if the lines don't intersect.
-    fn find_scanline_intersection(scan_y: i32, vert1: PxCoords, vert2: PxCoords) -> Option<i32> {
+    fn find_scanline_intersection(scan_y: i32, vert1: CanvasPos, vert2: CanvasPos) -> Option<i32> {
         // If the two lines intersect...
         if (vert1.y <= scan_y && vert2.y > scan_y) || (vert2.y <= scan_y && vert1.y > scan_y) {
             // ...find the percentage of the way the intersection is along the vertex line...
