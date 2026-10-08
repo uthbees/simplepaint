@@ -10,7 +10,8 @@ pub struct CanvasPanel {
     egui_ctx: egui::Context,
     panel_rect_pts: egui::Rect,
     pub canvas: CanvasBuffer,
-    /// The x/y pan offset of the canvas in canvas pixels. (0, 0) centers the canvas.
+    /// The x/y pan offset of the center of the canvas from the center of the panel.
+    /// Measured in canvas pixels. (0, 0) puts the center of the canvas in the center of the panel.
     pub pan_px: Vec2,
     /// Canvas zoom. Larger numbers zoom in, smaller numbers zoom out.
     /// 1 is 1:1 screen px:canvas px, 2 is 2:1 screen px:canvas px, 0.5 is 1:2 screen px:canvas px.
@@ -65,6 +66,7 @@ impl CanvasPanel {
         if scroll_delta != Vec2::ZERO {
             let pan_delta = scroll_delta / self.zoom;
             self.pan_px += pan_delta;
+            self.clamp_pan();
         }
 
         let zoom_delta = egui_ui.input(egui::InputState::zoom_delta);
@@ -89,6 +91,7 @@ impl CanvasPanel {
 
             self.pan_px += pan_delta;
             self.zoom = new_zoom;
+            self.clamp_pan();
         }
     }
 
@@ -107,6 +110,14 @@ impl CanvasPanel {
             );
             self.last_drag_pos = Some(pos_px);
         }
+    }
+
+    /// Clamps the pan to prevent the edges of the canvas from going beyond the center of the panel.
+    fn clamp_pan(&mut self) {
+        let half_w = self.canvas.width() as f32 * 0.5;
+        let half_h = self.canvas.height() as f32 * 0.5;
+        self.pan_px.x = self.pan_px.x.clamp(-half_w, half_w);
+        self.pan_px.y = self.pan_px.y.clamp(-half_h, half_h);
     }
 
     /// Calculates the current normalization factors for the canvas panel. These factors can be
