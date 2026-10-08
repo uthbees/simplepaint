@@ -11,7 +11,7 @@ pub struct CanvasPanel {
     panel_rect_pts: egui::Rect,
     pub canvas: CanvasBuffer,
     /// The x/y pan offset of the canvas in canvas pixels. (0, 0) centers the canvas.
-    pub pan_px: egui::Vec2,
+    pub pan_px: Vec2,
     /// Canvas zoom. Larger numbers zoom in, smaller numbers zoom out.
     /// 1 is 1:1 screen px:canvas px, 2 is 2:1 screen px:canvas px, 0.5 is 1:2 screen px:canvas px.
     pub zoom: f32,
@@ -24,7 +24,7 @@ impl CanvasPanel {
             egui_ctx,
             panel_rect_pts: egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::ZERO),
             canvas: CanvasBuffer::new(DEFAULT_CANVAS_WIDTH, DEFAULT_CANVAS_HEIGHT),
-            pan_px: egui::Vec2::ZERO,
+            pan_px: Vec2::ZERO,
             zoom: 1.0,
             last_drag_pos: None,
         }
@@ -62,7 +62,7 @@ impl CanvasPanel {
 
     fn handle_scrolled(&mut self, egui_ui: &egui::Ui, response: &egui::Response) {
         let scroll_delta = egui_ui.input(egui::InputState::translation_delta);
-        if scroll_delta != egui::Vec2::ZERO {
+        if scroll_delta != Vec2::ZERO {
             let pan_delta = scroll_delta / self.zoom;
             self.pan_px += pan_delta;
         }
@@ -102,36 +102,10 @@ impl CanvasPanel {
             self.canvas.draw_line(
                 pos_px,
                 self.last_drag_pos.unwrap_or(pos_px),
-                1,
+                1.0,
                 PixelColor::BLACK,
             );
             self.last_drag_pos = Some(pos_px);
-
-            // testing lines
-            // self.draw_line(
-            //     PxCoords { x: 1, y: 1 },
-            //     PxCoords { x: 1, y: 1 },
-            //     1,
-            //     PixelColor::BLACK,
-            // );
-            // self.draw_line(
-            //     PxCoords { x: 10, y: 10 },
-            //     PxCoords { x: 50, y: 50 },
-            //     1,
-            //     PixelColor::BLACK,
-            // );
-            // self.draw_line(
-            //     PxCoords { x: 10, y: 10 },
-            //     PxCoords { x: 25, y: 50 },
-            //     1,
-            //     PixelColor::BLACK,
-            // );
-            // self.draw_line(
-            //     PxCoords { x: 10, y: 10 },
-            //     PxCoords { x: 50, y: 25 },
-            //     1,
-            //     PixelColor::BLACK,
-            // );
         }
     }
 
