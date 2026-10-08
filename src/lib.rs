@@ -200,6 +200,12 @@ impl AppState {
             &self.window,
         );
 
+        // Make sure we redraw during scroll flings to render the fling smoothly, even though
+        // there are no new input events.
+        if egui_ctx.input(|i| i.time_since_last_scroll() < 1.0) {
+            self.window.request_redraw();
+        }
+
         // Make the window visible, if this is the first render.
         if !self.window.is_visible().unwrap_or(true) {
             self.window.set_visible(true);
