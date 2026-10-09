@@ -14,6 +14,7 @@ pub struct PixelColor {
 }
 
 impl PixelColor {
+    #[allow(dead_code)]
     pub const WHITE: Self = Self {
         r: 255,
         g: 255,

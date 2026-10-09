@@ -15,7 +15,7 @@ impl CanvasPos {
     /// Converts a position from logical points within the canvas panel to pixel coordinates relative
     /// to the canvas's pixel grid.
     ///
-    /// This algorithm duplicates the algorithm in `canvas_panel.wgsl`. See the comments in that file
+    /// This algorithm duplicates the algorithm in `canvas_view.wgsl`. See the comments in that file
     /// for further explanation.
     #[must_use]
     pub fn from_panel_pos(

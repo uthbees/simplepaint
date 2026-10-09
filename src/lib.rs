@@ -79,7 +79,7 @@ impl ApplicationHandler for App {
             .render_state()
             .expect("RenderState should be available after set_window");
 
-        let ui = Ui::new(egui_ctx);
+        let mut ui = Ui::new(egui_ctx);
 
         // Upload the initial white canvas to a wgpu texture.
         let canvas = &ui.canvas_panel.canvas;
@@ -89,6 +89,9 @@ impl ApplicationHandler for App {
             canvas.height(),
             canvas.as_bytes(),
         );
+
+        ui.canvas_panel
+            .set_canvas_view_texture_id(canvas_gpu.get_view_texture_id());
 
         self.inner = Some(AppState {
             window,
@@ -142,29 +145,15 @@ impl AppState {
         let egui_ctx = self.egui_state.egui_ctx().clone();
 
         let full_output = egui_ctx.run_ui(raw_input, |egui_ui| {
-            self.ui.draw(egui_ui, self.canvas_gpu.panel_texture_id);
+            self.ui.draw(egui_ui);
         });
 
-        let pixels_per_point = egui_ctx.pixels_per_point();
-
-        let canvas_panel_rect_px = self.ui.canvas_panel.panel_rect_px();
-        self.canvas_gpu.update_panel_size(
+        let canvas_view_px = self.ui.canvas_panel.canvas_view_px();
+        self.canvas_gpu.update_canvas_view_size(
             &self.render_state,
-            canvas_panel_rect_px.width(),
-            canvas_panel_rect_px.height(),
+            canvas_view_px.width(),
+            canvas_view_px.height(),
         );
-
-        // let inner_size = state.window.inner_size();
-        // let physical_width =
-        //     (inner_size.width as f32 - (SIDE_PANEL_WIDTH * pixels_per_point)).max(1.0);
-        // let physical_height = (inner_size.height as f32).max(1.0);
-        //
-        // state.canvas_gpu.update_panel_size(
-        //     &state.render_state,
-        //     physical_width as u32,
-        //     physical_height as u32,
-        // );
-
         self.canvas_gpu
             .update_camera(&self.render_state.queue, &self.ui.canvas_panel);
 
@@ -178,7 +167,7 @@ impl AppState {
 
         // Render canvas texture with pan/zoom shader onto the canvas panel texture.
         self.canvas_gpu
-            .render_canvas_panel_texture(&self.render_state.device, &self.render_state.queue);
+            .render_canvas_view_texture(&self.render_state.device, &self.render_state.queue);
 
         // Handle egui platform output (cursor, clipboard, etc.).
         self.egui_state.handle_platform_output_with_event_loop(
@@ -187,6 +176,7 @@ impl AppState {
             full_output.platform_output,
         );
 
+        let pixels_per_point = egui_ctx.pixels_per_point();
         let clipped_primitives = egui_ctx.tessellate(full_output.shapes, pixels_per_point);
         let mut textures_delta = full_output.textures_delta;
 
@@ -206,7 +196,7 @@ impl AppState {
             self.window.request_redraw();
         }
 
-        // Make the window visible, if this is the first render.
+        // Make the window visible (if this is the first render).
         if !self.window.is_visible().unwrap_or(true) {
             self.window.set_visible(true);
         }

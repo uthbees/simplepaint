@@ -43,13 +43,14 @@ pub struct CanvasGpu {
     camera_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::RenderPipeline,
-    /// Final canvas panel texture, displaying the view of the canvas from the camera.
-    panel_texture: wgpu::Texture,
-    /// The panel texture's id registered with egui.
-    pub panel_texture_id: egui::TextureId,
-    panel_texture_view: wgpu::TextureView,
-    panel_width: u32,
-    panel_height: u32,
+    /// Final canvas view texture, displaying the view of the canvas from the camera.
+    view_texture: wgpu::Texture,
+    /// The view texture's id registered with egui.
+    view_texture_id: egui::TextureId,
+    /// The wgpu texture view for the canvas view.
+    view_texture_view: wgpu::TextureView,
+    view_width: u32,
+    view_height: u32,
 }
 
 impl CanvasGpu {
@@ -149,7 +150,7 @@ impl CanvasGpu {
 
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("canvas_shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/canvas_panel.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/canvas_view.wgsl").into()),
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -192,15 +193,15 @@ impl CanvasGpu {
             cache: None,
         });
 
-        let panel_width = width.max(1);
-        let panel_height = height.max(1);
+        let view_width = width.max(1);
+        let view_height = height.max(1);
 
-        let (panel_texture, panel_texture_view) =
-            Self::create_panel_texture(device, panel_width, panel_height);
+        let (view_texture, view_texture_view) =
+            Self::create_view_texture(device, view_width, view_height);
 
-        let panel_texture_id = render_state.renderer.write().register_native_texture(
+        let view_texture_id = render_state.renderer.write().register_native_texture(
             device,
-            &panel_texture_view,
+            &view_texture_view,
             wgpu::FilterMode::Nearest,
         );
 
@@ -210,12 +211,16 @@ impl CanvasGpu {
             camera_buffer,
             bind_group,
             pipeline,
-            panel_texture,
-            panel_texture_id,
-            panel_texture_view,
-            panel_width,
-            panel_height,
+            view_texture,
+            view_texture_id,
+            view_texture_view,
+            view_width,
+            view_height,
         }
+    }
+
+    pub fn get_view_texture_id(&self) -> egui::TextureId {
+        self.view_texture_id
     }
 
     /// Re-upload the full CPU canvas buffer to the raw GPU texture.
@@ -257,8 +262,8 @@ impl CanvasGpu {
     }
 
     #[allow(clippy::cast_sign_loss)]
-    /// Handles changes to the requested canvas panel size.
-    pub fn update_panel_size(
+    /// Handles changes to the requested canvas view size.
+    pub fn update_canvas_view_size(
         &mut self,
         render_state: &RenderState,
         requested_width: f32,
@@ -266,36 +271,36 @@ impl CanvasGpu {
     ) {
         let requested_width = requested_width.max(1.0) as u32;
         let requested_height = requested_height.max(1.0) as u32;
-        if requested_width == self.panel_width && requested_height == self.panel_height {
+        if requested_width == self.view_width && requested_height == self.view_height {
             return;
         }
 
         let device = &render_state.device;
-        (self.panel_texture, self.panel_texture_view) =
-            Self::create_panel_texture(device, requested_width, requested_height);
+        (self.view_texture, self.view_texture_view) =
+            Self::create_view_texture(device, requested_width, requested_height);
 
         render_state
             .renderer
             .write()
             .update_egui_texture_from_wgpu_texture(
                 device,
-                &self.panel_texture_view,
+                &self.view_texture_view,
                 wgpu::FilterMode::Nearest,
-                self.panel_texture_id,
+                self.view_texture_id,
             );
 
-        self.panel_width = requested_width;
-        self.panel_height = requested_height;
+        self.view_width = requested_width;
+        self.view_height = requested_height;
     }
 
-    /// Utility function to create a texture for the canvas panel.
-    fn create_panel_texture(
+    /// Utility function to create a texture for the canvas view.
+    fn create_view_texture(
         device: &wgpu::Device,
         width: u32,
         height: u32,
     ) -> (wgpu::Texture, wgpu::TextureView) {
-        let panel_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("canvas_panel_texture"),
+        let view_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("canvas_view_texture"),
             size: wgpu::Extent3d {
                 width,
                 height,
@@ -309,13 +314,13 @@ impl CanvasGpu {
             view_formats: &[],
         });
 
-        let panel_texture_view = panel_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view_texture_view = view_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        (panel_texture, panel_texture_view)
+        (view_texture, view_texture_view)
     }
 
-    /// Render the canvas texture with the camera uniform onto the canvas panel texture.
-    pub fn render_canvas_panel_texture(&self, device: &wgpu::Device, queue: &wgpu::Queue) {
+    /// Render the canvas texture with the camera uniform onto the canvas view texture.
+    pub fn render_canvas_view_texture(&self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("canvas_render_encoder"),
         });
@@ -324,7 +329,7 @@ impl CanvasGpu {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("canvas_render_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.panel_texture_view,
+                    view: &self.view_texture_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {

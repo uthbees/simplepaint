@@ -1,4 +1,5 @@
 pub mod canvas_panel;
+mod scrollbar;
 pub mod side_panel;
 
 use crate::ui::canvas_panel::CanvasPanel;
@@ -15,8 +16,8 @@ impl Ui {
         }
     }
 
-    pub fn draw(&mut self, egui_ui: &mut egui::Ui, canvas_panel_texture_id: egui::TextureId) {
+    pub fn draw(&mut self, egui_ui: &mut egui::Ui) {
         draw_side_panel(egui_ui, egui::Color32::BLACK);
-        self.canvas_panel.draw(egui_ui, canvas_panel_texture_id);
+        self.canvas_panel.draw(egui_ui);
     }
 }
