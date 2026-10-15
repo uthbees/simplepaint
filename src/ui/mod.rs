@@ -17,7 +17,7 @@ impl Ui {
     }
 
     pub fn draw(&mut self, egui_ui: &mut egui::Ui) {
-        draw_side_panel(egui_ui, egui::Color32::BLACK);
+        draw_side_panel(egui_ui, &mut egui::Rgba::BLACK);
         self.canvas_panel.draw(egui_ui);
     }
 }
