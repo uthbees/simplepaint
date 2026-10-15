@@ -1,9 +1,9 @@
-use crate::canvas::PixelColor;
 use crate::canvas::canvas_buffer::CanvasBuffer;
 use crate::canvas::canvas_pos::CanvasPos;
 use crate::ui::scrollbar::{
     SCROLLBAR_TRACK_COLOR, SCROLLBAR_TRACK_SIZE_PT, Scrollbar, ScrollbarAxis,
 };
+use crate::ui::ui_config::UiConfig;
 use egui::{CentralPanel, Vec2};
 
 const DEFAULT_CANVAS_HEIGHT: u32 = 500;
@@ -54,7 +54,7 @@ impl CanvasPanel {
         self.canvas_view_pts * self.egui_ctx.pixels_per_point()
     }
 
-    pub fn draw(&mut self, egui_ui: &mut egui::Ui) {
+    pub fn draw(&mut self, egui_ui: &mut egui::Ui, ui_config: &UiConfig) {
         CentralPanel::default().show(egui_ui, |egui_ui| {
             egui_ui.spacing_mut().item_spacing = Vec2::ZERO;
             let panel_rect = egui_ui.available_rect_before_wrap();
@@ -76,7 +76,7 @@ impl CanvasPanel {
                     egui::Color32::WHITE,
                 );
             }
-            self.handle_canvas_view_input(egui_ui, &response);
+            self.handle_canvas_view_input(egui_ui, ui_config, &response);
 
             self.draw_scrollbars(egui_ui, panel_rect, canvas_view_rect);
         });
@@ -143,7 +143,12 @@ impl CanvasPanel {
             .rect_filled(corner, 0.0, SCROLLBAR_TRACK_COLOR);
     }
 
-    fn handle_canvas_view_input(&mut self, egui_ui: &mut egui::Ui, response: &egui::Response) {
+    fn handle_canvas_view_input(
+        &mut self,
+        egui_ui: &mut egui::Ui,
+        ui_config: &UiConfig,
+        response: &egui::Response,
+    ) {
         if response.hovered() {
             self.handle_scrolled(egui_ui, response);
         }
@@ -151,7 +156,7 @@ impl CanvasPanel {
         if response.drag_stopped() {
             self.last_drag_pos = None;
         } else if response.dragged() {
-            self.handle_dragged(egui_ui, response);
+            self.handle_dragged(egui_ui, ui_config, response);
         }
     }
 
@@ -189,7 +194,12 @@ impl CanvasPanel {
         }
     }
 
-    fn handle_dragged(&mut self, egui_ui: &mut egui::Ui, canvas_response: &egui::Response) {
+    fn handle_dragged(
+        &mut self,
+        egui_ui: &mut egui::Ui,
+        ui_config: &UiConfig,
+        canvas_response: &egui::Response,
+    ) {
         if let Some(cursor_pos) = egui_ui.input(|i| i.pointer.interact_pos()) {
             let rect = canvas_response.rect;
 
@@ -200,7 +210,7 @@ impl CanvasPanel {
                 pos_px,
                 self.last_drag_pos.unwrap_or(pos_px),
                 1.0,
-                PixelColor::BLACK,
+                ui_config.selected_color,
             );
             self.last_drag_pos = Some(pos_px);
         }

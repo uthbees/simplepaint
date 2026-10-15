@@ -1,8 +1,9 @@
+use crate::ui::ui_config::UiConfig;
 use egui::color_picker::{Alpha, color_edit_button_rgba};
-use egui::{Panel, Rgba, RichText, Ui};
+use egui::{Panel, RichText, Ui};
 
 /// Draws the left-hand side panel containing basic tool/color indicators.
-pub fn draw_side_panel(egui_ui: &mut Ui, selected_color: &mut Rgba) {
+pub fn draw_side_panel(egui_ui: &mut Ui, ui_config: &mut UiConfig) {
     Panel::left("left_panel")
         .exact_size(200.0)
         .resizable(false)
@@ -11,7 +12,11 @@ pub fn draw_side_panel(egui_ui: &mut Ui, selected_color: &mut Rgba) {
                 .exact_size(200.0)
                 .resizable(false)
                 .show(egui_ui, |egui_ui| {
-                    color_edit_button_rgba(egui_ui, selected_color, Alpha::OnlyBlend);
+                    color_edit_button_rgba(
+                        egui_ui,
+                        &mut ui_config.selected_color,
+                        Alpha::OnlyBlend,
+                    );
                 });
             Panel::top("tools_panel")
                 .resizable(false)

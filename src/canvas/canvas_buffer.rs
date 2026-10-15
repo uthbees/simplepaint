@@ -1,5 +1,5 @@
-use crate::canvas::PixelColor;
 use crate::canvas::canvas_pos::CanvasPos;
+use egui::Rgba;
 use tiny_skia::{Color, LineCap, LineJoin, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
 /// Stores and manages the state of the canvas. Data is stored in a CPU-side 2D pixel buffer.
@@ -43,7 +43,7 @@ impl CanvasBuffer {
 
     /// Draws a line from `pos1` to `pos2` with the specified thickness and color.
     #[allow(clippy::cast_sign_loss)]
-    pub fn draw_line(&mut self, pos1: CanvasPos, pos2: CanvasPos, thickness: f32, color: PixelColor) {
+    pub fn draw_line(&mut self, pos1: CanvasPos, pos2: CanvasPos, thickness: f32, color: Rgba) {
         // Build a path for the line segment (or a zero-length segment for a dot).
         let x1 = pos1.x as f32 + 0.5;
         let y1 = pos1.y as f32 + 0.5;
@@ -64,8 +64,15 @@ impl CanvasBuffer {
             ..Stroke::default()
         };
 
+        let converted_color: Color = Color::from_rgba(
+            color[0].clamp(0.0, 1.0),
+            color[1].clamp(0.0, 1.0),
+            color[2].clamp(0.0, 1.0),
+            color[3].clamp(0.0, 1.0),
+        )
+        .expect("Color values should be clamped properly");
         let mut paint = Paint::default();
-        paint.set_color(Color::from_rgba8(color.r, color.g, color.b, color.a));
+        paint.set_color(converted_color);
         paint.anti_alias = true;
 
         self.pixmap
