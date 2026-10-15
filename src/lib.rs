@@ -190,9 +190,7 @@ impl AppState {
             &self.window,
         );
 
-        // Make sure we redraw during scroll flings to render the fling smoothly, even though
-        // there are no new input events.
-        if egui_ctx.input(|i| i.time_since_last_scroll() < 1.0) {
+        if egui_ctx.has_requested_repaint() {
             self.window.request_redraw();
         }
 
