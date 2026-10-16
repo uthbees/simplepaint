@@ -10,7 +10,7 @@ use ui_config::UiConfig;
 pub struct Ui {
     pub canvas_panel: CanvasPanel,
     left_panel: LeftPanel,
-    ui_config: UiConfig,
+    config: UiConfig,
 }
 
 impl Ui {
@@ -18,12 +18,12 @@ impl Ui {
         Self {
             canvas_panel: CanvasPanel::new(egui_ctx),
             left_panel: LeftPanel::new(),
-            ui_config: UiConfig::new(),
+            config: UiConfig::new(),
         }
     }
 
     pub fn draw(&mut self, egui_ui: &mut egui::Ui) {
-        self.left_panel.draw(egui_ui, &mut self.ui_config);
-        self.canvas_panel.draw(egui_ui, &self.ui_config);
+        self.left_panel.draw(egui_ui, &mut self.config);
+        self.canvas_panel.draw(egui_ui, &self.config);
     }
 }
