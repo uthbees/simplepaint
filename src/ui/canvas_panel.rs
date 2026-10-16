@@ -210,7 +210,7 @@ impl CanvasPanel {
                 pos_px,
                 self.last_drag_pos.unwrap_or(pos_px),
                 1.0,
-                ui_config.selected_color,
+                ui_config.foreground_color,
             );
             self.last_drag_pos = Some(pos_px);
         }
