@@ -1,9 +1,11 @@
-//! This module handles interactions with the GPU that are too complex to fit into app.rs.
+//! This module is responsible for managing complex interactions with the GPU. It is not
+//! responsible for window or frame management.
 
 use crate::canvas::canvas_buffer::CanvasBuffer;
 use crate::ui::canvas_panel::CanvasPanel;
 use bytemuck::{Pod, Zeroable};
 use egui_wgpu::RenderState;
+use std::iter;
 use wgpu::PipelineCompilationOptions;
 use wgpu::util::DeviceExt;
 
@@ -35,22 +37,22 @@ impl Default for CameraUniform {
     }
 }
 
-/// All GPU resources that are tied to the canvas texture and canvas rendering pipeline.
+/// All GPU resources that are tied to the canvas textures and rendering pipeline.
 pub struct CanvasGpu {
-    /// The raw canvas texture written to by CPU drawing operations.
-    raw_texture: wgpu::Texture,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
-    pipeline: wgpu::RenderPipeline,
+    /// The intermediate texture holding the composite of all canvas layers.
+    composite_canvas_texture: wgpu::Texture,
+    canvas_view_bind_group: wgpu::BindGroup,
+    canvas_view_pipeline: wgpu::RenderPipeline,
     /// Final canvas view texture, displaying the view of the canvas from the camera.
-    view_texture: wgpu::Texture,
-    /// The view texture's id registered with egui.
-    view_texture_id: egui::TextureId,
+    canvas_view_texture: wgpu::Texture,
+    /// The canvas view texture's id registered with egui.
+    canvas_view_texture_id: egui::TextureId,
     /// The wgpu texture view for the canvas view.
-    view_texture_view: wgpu::TextureView,
-    view_width: u32,
-    view_height: u32,
+    canvas_view_texture_view: wgpu::TextureView,
+    canvas_view_width: u32,
+    canvas_view_height: u32,
 }
 
 impl CanvasGpu {
@@ -61,8 +63,8 @@ impl CanvasGpu {
         let device = &render_state.device;
         let queue = &render_state.queue;
 
-        let raw_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("raw_canvas_texture"),
+        let composite_canvas_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("composite_canvas_texture"),
             size: wgpu::Extent3d {
                 width,
                 height,
@@ -76,10 +78,11 @@ impl CanvasGpu {
             view_formats: &[],
         });
 
-        CanvasGpu::write_texture(queue, &raw_texture, width, height, pixels);
-        let raw_texture_view = raw_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        CanvasGpu::write_texture(queue, &composite_canvas_texture, width, height, pixels);
+        let composite_canvas_texture_view =
+            composite_canvas_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        let canvas_view_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("canvas_sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
@@ -97,49 +100,50 @@ impl CanvasGpu {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("canvas_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+        let canvas_view_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("canvas_view_bind_group_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
                     },
-                    count: None,
-                },
-            ],
-        });
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("canvas_bind_group"),
-            layout: &bind_group_layout,
+        let canvas_view_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("canvas_view_bind_group"),
+            layout: &canvas_view_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&raw_texture_view),
+                    resource: wgpu::BindingResource::TextureView(&composite_canvas_texture_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
+                    resource: wgpu::BindingResource::Sampler(&canvas_view_sampler),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
@@ -148,28 +152,29 @@ impl CanvasGpu {
             ],
         });
 
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("canvas_shader"),
+        let canvas_view_shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("canvas_view_shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/canvas_view.wgsl").into()),
         });
 
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("canvas_pipeline_layout"),
-            bind_group_layouts: &[Some(&bind_group_layout)],
-            immediate_size: 0,
-        });
+        let canvas_view_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("canvas_view_pipeline_layout"),
+                bind_group_layouts: &[Some(&canvas_view_bind_group_layout)],
+                immediate_size: 0,
+            });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("canvas_render_pipeline"),
-            layout: Some(&pipeline_layout),
+        let canvas_view_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("canvas_view_pipeline"),
+            layout: Some(&canvas_view_pipeline_layout),
             vertex: wgpu::VertexState {
-                module: &shader_module,
+                module: &canvas_view_shader_module,
                 entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
-                module: &shader_module,
+                module: &canvas_view_shader_module,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Rgba8Unorm,
@@ -193,44 +198,44 @@ impl CanvasGpu {
             cache: None,
         });
 
-        let view_width = width.max(1);
-        let view_height = height.max(1);
+        let canvas_view_width = width.max(1);
+        let canvas_view_height = height.max(1);
 
-        let (view_texture, view_texture_view) =
-            Self::create_view_texture(device, view_width, view_height);
+        let (canvas_view_texture, canvas_view_texture_view) =
+            Self::create_canvas_view_texture(device, canvas_view_width, canvas_view_height);
 
-        let view_texture_id = render_state.renderer.write().register_native_texture(
+        let canvas_view_texture_id = render_state.renderer.write().register_native_texture(
             device,
-            &view_texture_view,
+            &canvas_view_texture_view,
             wgpu::FilterMode::Nearest,
         );
 
         Self {
-            raw_texture,
             camera_uniform,
             camera_buffer,
-            bind_group,
-            pipeline,
-            view_texture,
-            view_texture_id,
-            view_texture_view,
-            view_width,
-            view_height,
+            composite_canvas_texture,
+            canvas_view_bind_group,
+            canvas_view_pipeline,
+            canvas_view_texture,
+            canvas_view_texture_id,
+            canvas_view_texture_view,
+            canvas_view_width,
+            canvas_view_height,
         }
     }
 
     pub fn get_view_texture_id(&self) -> egui::TextureId {
-        self.view_texture_id
+        self.canvas_view_texture_id
     }
 
-    /// Re-upload the full CPU canvas buffer to the raw GPU texture.
-    pub fn upload_canvas_state(&self, queue: &wgpu::Queue, canvas: &CanvasBuffer) {
+    /// Re-upload a layer's full CPU buffer to its raw GPU texture.
+    pub fn upload_layer(&self, queue: &wgpu::Queue, layer_buffer: &CanvasBuffer) {
         CanvasGpu::write_texture(
             queue,
-            &self.raw_texture,
-            canvas.width(),
-            canvas.height(),
-            canvas.as_bytes(),
+            &self.composite_canvas_texture,
+            layer_buffer.width(),
+            layer_buffer.height(),
+            layer_buffer.as_bytes(),
         );
     }
 
@@ -271,30 +276,31 @@ impl CanvasGpu {
     ) {
         let requested_width = requested_width.max(1.0) as u32;
         let requested_height = requested_height.max(1.0) as u32;
-        if requested_width == self.view_width && requested_height == self.view_height {
+        if requested_width == self.canvas_view_width && requested_height == self.canvas_view_height
+        {
             return;
         }
 
         let device = &render_state.device;
-        (self.view_texture, self.view_texture_view) =
-            Self::create_view_texture(device, requested_width, requested_height);
+        (self.canvas_view_texture, self.canvas_view_texture_view) =
+            Self::create_canvas_view_texture(device, requested_width, requested_height);
 
         render_state
             .renderer
             .write()
             .update_egui_texture_from_wgpu_texture(
                 device,
-                &self.view_texture_view,
+                &self.canvas_view_texture_view,
                 wgpu::FilterMode::Nearest,
-                self.view_texture_id,
+                self.canvas_view_texture_id,
             );
 
-        self.view_width = requested_width;
-        self.view_height = requested_height;
+        self.canvas_view_width = requested_width;
+        self.canvas_view_height = requested_height;
     }
 
     /// Utility function to create a texture for the canvas view.
-    fn create_view_texture(
+    fn create_canvas_view_texture(
         device: &wgpu::Device,
         width: u32,
         height: u32,
@@ -319,7 +325,7 @@ impl CanvasGpu {
         (view_texture, view_texture_view)
     }
 
-    /// Render the canvas texture with the camera uniform onto the canvas view texture.
+    /// Render the canvas view texture from the canvas texture with the camera uniform.
     pub fn render_canvas_view_texture(&self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("canvas_render_encoder"),
@@ -329,7 +335,7 @@ impl CanvasGpu {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("canvas_render_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.view_texture_view,
+                    view: &self.canvas_view_texture_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -348,12 +354,12 @@ impl CanvasGpu {
                 multiview_mask: None,
             });
 
-            render_pass.set_pipeline(&self.pipeline);
-            render_pass.set_bind_group(0, &self.bind_group, &[]);
+            render_pass.set_pipeline(&self.canvas_view_pipeline);
+            render_pass.set_bind_group(0, &self.canvas_view_bind_group, &[]);
             render_pass.draw(0..3, 0..1);
         }
 
-        queue.submit(std::iter::once(encoder.finish()));
+        queue.submit(iter::once(encoder.finish()));
     }
 
     /// Wrapper function for `queue.write_texture`.

@@ -5,12 +5,12 @@ mod ui;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use crate::gpu::CanvasGpu;
-use crate::ui::Ui;
 use egui::ViewportId;
 use egui_wgpu::winit::Painter;
 use egui_wgpu::{RenderState, WgpuConfiguration};
 use egui_winit::State as EguiWinitState;
+use gpu::CanvasGpu;
+use ui::Ui;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
@@ -161,7 +161,7 @@ impl AppState {
         let canvas = &mut self.ui.canvas_panel.canvas;
         if canvas.dirty {
             self.canvas_gpu
-                .upload_canvas_state(&self.render_state.queue, canvas);
+                .upload_layer(&self.render_state.queue, canvas);
             canvas.dirty = false;
         }
 
