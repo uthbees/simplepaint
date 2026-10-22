@@ -83,11 +83,15 @@ impl ApplicationHandler for App {
 
         // Upload the initial white canvas to a wgpu texture.
         let canvas = &ui.canvas_panel.canvas;
+        let canvas_view_px = &ui.canvas_panel.canvas_view_px();
+        #[allow(clippy::cast_sign_loss)]
         let canvas_gpu = CanvasGpu::new(
             &render_state,
             canvas.width(),
             canvas.height(),
             canvas.as_bytes(),
+            canvas_view_px.width() as u32,
+            canvas_view_px.height() as u32,
         );
 
         ui.canvas_panel
@@ -161,7 +165,7 @@ impl AppState {
         let canvas = &mut self.ui.canvas_panel.canvas;
         if canvas.dirty {
             self.canvas_gpu
-                .upload_layer(&self.render_state.queue, canvas);
+                .upload_layer(&self.render_state.queue, canvas, 0);
             canvas.dirty = false;
         }
 

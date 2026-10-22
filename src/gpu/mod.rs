@@ -37,20 +37,27 @@ impl Default for CameraUniform {
     }
 }
 
+struct LayerResources {
+    texture: wgpu::Texture,
+    composition_bind_group: wgpu::BindGroup,
+}
+
 /// All GPU resources that are tied to the canvas textures and rendering pipeline.
 pub struct CanvasGpu {
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
-    /// The intermediate texture holding the composite of all canvas layers.
-    composite_canvas_texture: wgpu::Texture,
+    layer_sampler: wgpu::Sampler,
+    layer_composition_bind_group_layout: wgpu::BindGroupLayout,
+    layer_textures: Vec<LayerResources>,
+    layers_dirty: bool,
+    composite_canvas_pipeline: wgpu::RenderPipeline,
+    composite_canvas_texture_view: wgpu::TextureView,
     canvas_view_bind_group: wgpu::BindGroup,
     canvas_view_pipeline: wgpu::RenderPipeline,
-    /// Final canvas view texture, displaying the view of the canvas from the camera.
-    canvas_view_texture: wgpu::Texture,
+    /// The texture view for the final canvas view, displaying the view of the canvas from the camera.
+    canvas_view_texture_view: wgpu::TextureView,
     /// The canvas view texture's id registered with egui.
     canvas_view_texture_id: egui::TextureId,
-    /// The wgpu texture view for the canvas view.
-    canvas_view_texture_view: wgpu::TextureView,
     canvas_view_width: u32,
     canvas_view_height: u32,
 }
@@ -59,31 +66,118 @@ impl CanvasGpu {
     #[must_use]
     #[allow(clippy::too_many_lines)]
     /// Create the textures, shader pipeline, uniform buffer, and register offscreen target with egui.
-    pub fn new(render_state: &RenderState, width: u32, height: u32, pixels: &[u8]) -> Self {
+    pub fn new(
+        render_state: &RenderState,
+        canvas_width: u32,
+        canvas_height: u32,
+        initial_layer_pixels: &[u8],
+        canvas_view_width: u32,
+        canvas_view_height: u32,
+    ) -> Self {
         let device = &render_state.device;
         let queue = &render_state.queue;
+
+        let canvas_width = canvas_width.max(1);
+        let canvas_height = canvas_height.max(1);
+        let canvas_view_width = canvas_view_width.max(1);
+        let canvas_view_height = canvas_view_height.max(1);
+
+        let layer_composition_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("layer_composition_bind_group_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        let layer_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("layer_sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        });
+
+        let layer_textures: Vec<_> = vec![];
 
         let composite_canvas_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("composite_canvas_texture"),
             size: wgpu::Extent3d {
-                width,
-                height,
+                width: canvas_width,
+                height: canvas_height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-
-        CanvasGpu::write_texture(queue, &composite_canvas_texture, width, height, pixels);
         let composite_canvas_texture_view =
             composite_canvas_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+        let composite_canvas_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("composite_canvas_pipeline_layout"),
+                bind_group_layouts: &[Some(&layer_composition_bind_group_layout)],
+                immediate_size: 0,
+            });
+
+        // Load your WGSL shader (assumes you have a shader file)
+        let composite_canvas_shader =
+            device.create_shader_module(wgpu::include_wgsl!("shaders/composite_canvas.wgsl"));
+
+        let composite_canvas_pipeline =
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("composite_canvas_pipeline"),
+                layout: Some(&composite_canvas_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &composite_canvas_shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &composite_canvas_shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: composite_canvas_texture.format(),
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            });
+
         let canvas_view_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("canvas_sampler"),
+            label: Some("canvas_view_sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -198,10 +292,7 @@ impl CanvasGpu {
             cache: None,
         });
 
-        let canvas_view_width = width.max(1);
-        let canvas_view_height = height.max(1);
-
-        let (canvas_view_texture, canvas_view_texture_view) =
+        let canvas_view_texture_view =
             Self::create_canvas_view_texture(device, canvas_view_width, canvas_view_height);
 
         let canvas_view_texture_id = render_state.renderer.write().register_native_texture(
@@ -210,18 +301,35 @@ impl CanvasGpu {
             wgpu::FilterMode::Nearest,
         );
 
-        Self {
+        let mut canvas_gpu = Self {
             camera_uniform,
             camera_buffer,
-            composite_canvas_texture,
+            layer_sampler,
+            layer_composition_bind_group_layout,
+            layer_textures,
+            layers_dirty: false,
+            composite_canvas_pipeline,
+            composite_canvas_texture_view,
             canvas_view_bind_group,
             canvas_view_pipeline,
-            canvas_view_texture,
-            canvas_view_texture_id,
             canvas_view_texture_view,
+            canvas_view_texture_id,
             canvas_view_width,
             canvas_view_height,
-        }
+        };
+
+        let base_layer = canvas_gpu.create_layer_resources(device, canvas_width, canvas_height);
+        CanvasGpu::write_texture(
+            queue,
+            &base_layer.texture,
+            canvas_width,
+            canvas_height,
+            initial_layer_pixels,
+        );
+        canvas_gpu.layer_textures.push(base_layer);
+        canvas_gpu.update_composite_canvas(device, queue);
+
+        canvas_gpu
     }
 
     pub fn get_view_texture_id(&self) -> egui::TextureId {
@@ -229,14 +337,25 @@ impl CanvasGpu {
     }
 
     /// Re-upload a layer's full CPU buffer to its raw GPU texture.
-    pub fn upload_layer(&self, queue: &wgpu::Queue, layer_buffer: &CanvasBuffer) {
+    pub fn upload_layer(
+        &mut self,
+        queue: &wgpu::Queue,
+        layer_buffer: &CanvasBuffer,
+        layer_index: usize,
+    ) {
+        if layer_index >= self.layer_textures.len() {
+            eprintln!("Error: layer_index out of bounds in upload_layer");
+            return;
+        }
+
         CanvasGpu::write_texture(
             queue,
-            &self.composite_canvas_texture,
+            &self.layer_textures[layer_index].texture,
             layer_buffer.width(),
             layer_buffer.height(),
             layer_buffer.as_bytes(),
         );
+        self.layers_dirty = true;
     }
 
     /// Updates the `CameraUniform` and uploads the updated data.
@@ -282,7 +401,7 @@ impl CanvasGpu {
         }
 
         let device = &render_state.device;
-        (self.canvas_view_texture, self.canvas_view_texture_view) =
+        self.canvas_view_texture_view =
             Self::create_canvas_view_texture(device, requested_width, requested_height);
 
         render_state
@@ -299,12 +418,101 @@ impl CanvasGpu {
         self.canvas_view_height = requested_height;
     }
 
+    fn create_layer_resources(
+        &self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+    ) -> LayerResources {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("canvas_layer_texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let composition_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("layer_composition_bind_group"),
+            layout: &self.layer_composition_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.layer_sampler),
+                },
+            ],
+        });
+
+        LayerResources {
+            texture,
+            composition_bind_group,
+        }
+    }
+
+    /// Re-render the composite canvas texture from the layer textures.
+    fn update_composite_canvas(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("composite_canvas_render_encoder"),
+        });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("composite_canvas_render_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.composite_canvas_texture_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        // Clear the canvas before drawing the bottom layer.
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 0.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+
+            render_pass.set_pipeline(&self.composite_canvas_pipeline);
+
+            for LayerResources {
+                composition_bind_group,
+                ..
+            } in &self.layer_textures
+            {
+                render_pass.set_bind_group(0, composition_bind_group, &[]);
+                render_pass.draw(0..3, 0..1);
+            }
+        }
+
+        queue.submit(iter::once(encoder.finish()));
+    }
+
     /// Utility function to create a texture for the canvas view.
     fn create_canvas_view_texture(
         device: &wgpu::Device,
         width: u32,
         height: u32,
-    ) -> (wgpu::Texture, wgpu::TextureView) {
+    ) -> wgpu::TextureView {
         let view_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("canvas_view_texture"),
             size: wgpu::Extent3d {
@@ -320,20 +528,23 @@ impl CanvasGpu {
             view_formats: &[],
         });
 
-        let view_texture_view = view_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        (view_texture, view_texture_view)
+        view_texture.create_view(&wgpu::TextureViewDescriptor::default())
     }
 
     /// Render the canvas view texture from the canvas texture with the camera uniform.
-    pub fn render_canvas_view_texture(&self, device: &wgpu::Device, queue: &wgpu::Queue) {
+    pub fn render_canvas_view_texture(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        if self.layers_dirty {
+            self.update_composite_canvas(device, queue);
+            self.layers_dirty = false;
+        }
+
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("canvas_render_encoder"),
+            label: Some("canvas_view_render_encoder"),
         });
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("canvas_render_pass"),
+                label: Some("canvas_view_render_pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &self.canvas_view_texture_view,
                     resolve_target: None,
