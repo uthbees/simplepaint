@@ -1,4 +1,4 @@
-use crate::canvas::canvas_buffer::CanvasBuffer;
+use crate::canvas::layer::Layer;
 use crate::dimensions::DimensionsPxNonzero;
 use crate::gpu::CanvasGpu;
 
@@ -62,6 +62,10 @@ impl Layers {
         &self.composition_bind_group_layout
     }
 
+    pub fn count(&self) -> usize {
+        self.stack.len()
+    }
+
     pub fn add_layer(
         &mut self,
         device: &wgpu::Device,
@@ -80,8 +84,9 @@ impl Layers {
     pub fn upload_layer(
         &mut self,
         queue: &wgpu::Queue,
-        layer_buffer: &CanvasBuffer,
+        layer_buffer: &Layer,
         layer_index: usize,
+        canvas_dimensions: DimensionsPxNonzero,
     ) {
         if layer_index >= self.stack.len() {
             eprintln!("Error: layer_index out of bounds in upload_layer");
@@ -91,16 +96,19 @@ impl Layers {
         CanvasGpu::write_texture(
             queue,
             &self.stack[layer_index].texture,
-            layer_buffer.dimensions(),
+            canvas_dimensions,
             layer_buffer.as_bytes(),
         );
         self.dirty = true;
     }
 
-    pub fn for_each_layer(&self, mut callback: impl FnMut(&LayerResources)) {
-        self.stack.iter().for_each(|layer_resources| {
-            callback(layer_resources);
-        });
+    pub fn for_each_layer(&self, mut callback: impl FnMut(usize, &LayerResources)) {
+        self.stack
+            .iter()
+            .enumerate()
+            .for_each(|(i, layer_resources)| {
+                callback(i, layer_resources);
+            });
     }
 
     fn create_layer_resources(

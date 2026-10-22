@@ -1,6 +1,6 @@
-use crate::canvas::canvas_buffer::CanvasBuffer;
+use crate::canvas::Canvas;
 use crate::canvas::canvas_pos::CanvasPos;
-use crate::dimensions::DimensionsPx;
+use crate::dimensions::{DimensionsPx, DimensionsPxNonzero};
 use crate::ui::scrollbar::{
     SCROLLBAR_TRACK_COLOR, SCROLLBAR_TRACK_SIZE_PT, Scrollbar, ScrollbarAxis,
 };
@@ -15,7 +15,7 @@ pub struct CanvasPanel {
     canvas_view_dimensions_pts: egui::Rect,
     canvas_view_texture_id: Option<egui::TextureId>,
     scrollbars: CanvasPanelScrollbars,
-    pub canvas: CanvasBuffer,
+    pub canvas: Canvas,
     /// The x/y pan offset of the center of the canvas from the center of the panel.
     /// Measured in canvas pixels. (0, 0) puts the center of the canvas in the center of the panel.
     pub pan_px: Vec2,
@@ -43,7 +43,7 @@ impl CanvasPanel {
                 horizontal: Scrollbar::new(ScrollbarAxis::Horizontal),
                 vertical: Scrollbar::new(ScrollbarAxis::Vertical),
             },
-            canvas: CanvasBuffer::new(DimensionsPx::new(
+            canvas: Canvas::new(DimensionsPxNonzero::new(
                 DEFAULT_CANVAS_WIDTH,
                 DEFAULT_CANVAS_HEIGHT,
             )),
@@ -215,12 +215,8 @@ impl CanvasPanel {
             let relative_pos = cursor_pos - rect.min;
             let pos_px = CanvasPos::from_panel_pos(relative_pos, rect, self);
 
-            self.canvas.draw_line(
-                pos_px,
-                self.last_drag_pos.unwrap_or(pos_px),
-                1.0,
-                ui_config.foreground_color,
-            );
+            self.canvas
+                .draw_line(pos_px, self.last_drag_pos.unwrap_or(pos_px), 1.0, ui_config);
             self.last_drag_pos = Some(pos_px);
         }
     }

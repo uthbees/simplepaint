@@ -7,6 +7,7 @@ mod composite_canvas;
 mod layers;
 
 use crate::dimensions::DimensionsPxNonzero;
+use crate::ui::ui_config::EnabledLayersConfig;
 use camera::Camera;
 use canvas_view::CanvasView;
 use composite_canvas::CompositeCanvas;
@@ -35,6 +36,8 @@ impl CanvasGpu {
         let camera = Camera::new(device);
 
         let mut layers = Layers::new(device);
+        layers.add_layer(device, queue, canvas_dimensions, initial_pixels);
+        // TODO: Don't forget to remove the second layer
         layers.add_layer(device, queue, canvas_dimensions, initial_pixels);
 
         let composite_canvas = CompositeCanvas::new(device, &layers, canvas_dimensions);
@@ -67,9 +70,19 @@ impl CanvasGpu {
         &mut self.canvas_view
     }
 
-    pub fn render_canvas_view(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        self.canvas_view
-            .render(device, queue, &mut self.composite_canvas, &mut self.layers);
+    pub fn render_canvas_view(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        enabled_layers_config: &mut EnabledLayersConfig,
+    ) {
+        self.canvas_view.render(
+            device,
+            queue,
+            &mut self.composite_canvas,
+            &mut self.layers,
+            enabled_layers_config,
+        );
     }
 
     /// Wrapper function for `queue.write_texture`.

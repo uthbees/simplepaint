@@ -1,7 +1,7 @@
 pub mod canvas_panel;
 mod left_panel;
 mod scrollbar;
-mod ui_config;
+pub mod ui_config;
 
 use canvas_panel::CanvasPanel;
 use left_panel::LeftPanel;
@@ -10,7 +10,7 @@ use ui_config::UiConfig;
 pub struct Ui {
     pub canvas_panel: CanvasPanel,
     left_panel: LeftPanel,
-    config: UiConfig,
+    pub config: UiConfig,
 }
 
 impl Ui {

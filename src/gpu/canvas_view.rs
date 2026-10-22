@@ -2,6 +2,7 @@ use crate::dimensions::{DimensionsPx, DimensionsPxNonzero};
 use crate::gpu::camera::Camera;
 use crate::gpu::composite_canvas::CompositeCanvas;
 use crate::gpu::layers::Layers;
+use crate::ui::ui_config::EnabledLayersConfig;
 use egui_wgpu::RenderState;
 use std::iter;
 use wgpu::PipelineCompilationOptions;
@@ -189,8 +190,9 @@ impl CanvasView {
         queue: &wgpu::Queue,
         composite_canvas: &mut CompositeCanvas,
         layers: &mut Layers,
+        enabled_layers_config: &mut EnabledLayersConfig,
     ) {
-        composite_canvas.render_if_necessary(device, queue, layers);
+        composite_canvas.render_if_necessary(device, queue, layers, enabled_layers_config);
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("canvas_view_render_encoder"),

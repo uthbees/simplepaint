@@ -82,15 +82,20 @@ impl ApplicationHandler for App {
 
         let mut ui = Ui::new(egui_ctx);
 
-        // Upload the initial white canvas to a wgpu texture.
+        // Upload the initial canvas to a wgpu texture.
         let canvas = &ui.canvas_panel.canvas;
         let canvas_view_dim = &ui.canvas_panel.canvas_view_dimensions();
+        let layers = &canvas.layers;
+        // This section will need updating if it becomes possible to start the app with
+        // more than one layer.
+        // TODO: Uncomment this
+        // assert_eq!(layers.len(), 1);
         #[allow(clippy::cast_sign_loss)]
         let mut canvas_gpu = CanvasGpu::new(
             &render_state,
             canvas.dimensions(),
             canvas_view_dim.to_nonzero(),
-            canvas.as_bytes(),
+            layers[0].as_bytes(),
         );
 
         ui.canvas_panel
@@ -159,18 +164,27 @@ impl AppState {
             .camera()
             .update(&self.render_state.queue, &self.ui.canvas_panel);
 
-        // Upload CPU canvas to GPU if it's changed.
+        // Upload the CPU canvas to the GPU if it's changed.
         let canvas = &mut self.ui.canvas_panel.canvas;
-        if canvas.dirty {
-            self.canvas_gpu
-                .layers()
-                .upload_layer(&self.render_state.queue, canvas, 0);
-            canvas.dirty = false;
-        }
+        let canvas_dimensions = canvas.dimensions();
+        canvas.layers.iter_mut().enumerate().for_each(|(i, layer)| {
+            if layer.dirty {
+                self.canvas_gpu.layers().upload_layer(
+                    &self.render_state.queue,
+                    layer,
+                    i,
+                    canvas_dimensions,
+                );
+                layer.dirty = false;
+            }
+        });
 
         // Render canvas texture with pan/zoom shader onto the canvas panel texture.
-        self.canvas_gpu
-            .render_canvas_view(&self.render_state.device, &self.render_state.queue);
+        self.canvas_gpu.render_canvas_view(
+            &self.render_state.device,
+            &self.render_state.queue,
+            &mut self.ui.config.enabled_layers,
+        );
 
         // Handle egui platform output (cursor, clipboard, etc.).
         self.egui_state.handle_platform_output_with_event_loop(

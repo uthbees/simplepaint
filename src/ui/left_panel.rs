@@ -40,12 +40,12 @@ impl LeftPanel {
                 Panel::top("tools_panel")
                     .resizable(false)
                     .show(egui_ui, |egui_ui| {
-                        Self::draw_tools(egui_ui);
+                        Self::draw_tools(egui_ui, ui_config);
                     });
             });
     }
 
-    fn draw_tools(egui_ui: &mut egui::Ui) {
+    fn draw_tools(egui_ui: &mut egui::Ui, ui_config: &mut UiConfig) {
         egui_ui.add_space(8.0);
         egui_ui.heading("SimplePaint");
         egui_ui.separator();
@@ -53,6 +53,23 @@ impl LeftPanel {
         egui_ui.add_space(8.0);
         egui_ui.label(RichText::new("Tool").strong());
         egui_ui.label("Paintbrush");
+
+        egui_ui.separator();
+        egui_ui.add_space(8.0);
+        let mut checked = ui_config.enabled_layers.states[1];
+        let checkbox_response = egui_ui.checkbox(&mut checked, "Enable second layer");
+
+        if checked {
+            ui_config.enabled_layers.states[1] = true;
+            ui_config.selected_layer_idx = Some(1);
+        } else {
+            ui_config.enabled_layers.states[1] = false;
+            ui_config.selected_layer_idx = Some(0);
+        }
+
+        if checkbox_response.clicked() {
+            ui_config.enabled_layers.dirty = true;
+        }
     }
 
     fn draw_colors(egui_ui: &mut egui::Ui, ui_config: &mut UiConfig) {

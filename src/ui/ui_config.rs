@@ -1,12 +1,20 @@
 use egui::Rgba;
 use std::collections::VecDeque;
 
+pub struct EnabledLayersConfig {
+    pub states: Vec<bool>,
+    // Indicates whether there have been any changes here since the last render.
+    pub dirty: bool,
+}
+
 pub struct UiConfig {
     pub foreground_color: Rgba,
     pub background_color: Rgba,
 
     recent_colors: VecDeque<Option<Rgba>>,
     pub palette_colors: [Rgba; 10],
+    pub selected_layer_idx: Option<usize>,
+    pub enabled_layers: EnabledLayersConfig,
 }
 
 impl UiConfig {
@@ -30,6 +38,12 @@ impl UiConfig {
                 Rgba::from_rgb(1.0, 0.5, 0.0),
                 Rgba::from_rgb(0.5, 0.0, 0.5),
             ],
+            selected_layer_idx: Some(0),
+            enabled_layers: EnabledLayersConfig {
+                // TODO: Make this only have one layer when implementing the layers UI
+                states: vec![true, true],
+                dirty: false,
+            },
         }
     }
 
