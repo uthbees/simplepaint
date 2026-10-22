@@ -182,8 +182,8 @@ impl CanvasGpu {
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
 
@@ -410,7 +410,7 @@ impl CanvasGpu {
             .update_egui_texture_from_wgpu_texture(
                 device,
                 &self.canvas_view_texture_view,
-                wgpu::FilterMode::Nearest,
+                wgpu::FilterMode::Linear,
                 self.canvas_view_texture_id,
             );
 
