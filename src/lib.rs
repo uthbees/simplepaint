@@ -1,4 +1,5 @@
 mod canvas;
+mod dimensions;
 mod gpu;
 mod ui;
 
@@ -83,19 +84,17 @@ impl ApplicationHandler for App {
 
         // Upload the initial white canvas to a wgpu texture.
         let canvas = &ui.canvas_panel.canvas;
-        let canvas_view_px = &ui.canvas_panel.canvas_view_px();
+        let canvas_view_dim = &ui.canvas_panel.canvas_view_dimensions();
         #[allow(clippy::cast_sign_loss)]
-        let canvas_gpu = CanvasGpu::new(
+        let mut canvas_gpu = CanvasGpu::new(
             &render_state,
-            canvas.width(),
-            canvas.height(),
+            canvas.dimensions(),
+            canvas_view_dim.to_nonzero(),
             canvas.as_bytes(),
-            canvas_view_px.width() as u32,
-            canvas_view_px.height() as u32,
         );
 
         ui.canvas_panel
-            .set_canvas_view_texture_id(canvas_gpu.get_view_texture_id());
+            .set_canvas_view_texture_id(canvas_gpu.canvas_view().texture_id());
 
         self.inner = Some(AppState {
             window,
@@ -152,26 +151,26 @@ impl AppState {
             self.ui.draw(egui_ui);
         });
 
-        let canvas_view_px = self.ui.canvas_panel.canvas_view_px();
-        self.canvas_gpu.update_canvas_view_size(
+        self.canvas_gpu.canvas_view().update_size(
             &self.render_state,
-            canvas_view_px.width(),
-            canvas_view_px.height(),
+            self.ui.canvas_panel.canvas_view_dimensions(),
         );
         self.canvas_gpu
-            .update_camera(&self.render_state.queue, &self.ui.canvas_panel);
+            .camera()
+            .update(&self.render_state.queue, &self.ui.canvas_panel);
 
         // Upload CPU canvas to GPU if it's changed.
         let canvas = &mut self.ui.canvas_panel.canvas;
         if canvas.dirty {
             self.canvas_gpu
+                .layers()
                 .upload_layer(&self.render_state.queue, canvas, 0);
             canvas.dirty = false;
         }
 
         // Render canvas texture with pan/zoom shader onto the canvas panel texture.
         self.canvas_gpu
-            .render_canvas_view_texture(&self.render_state.device, &self.render_state.queue);
+            .render_canvas_view(&self.render_state.device, &self.render_state.queue);
 
         // Handle egui platform output (cursor, clipboard, etc.).
         self.egui_state.handle_platform_output_with_event_loop(

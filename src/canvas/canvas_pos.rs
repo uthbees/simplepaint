@@ -26,11 +26,11 @@ impl CanvasPos {
         let norm_factors = canvas_panel_state.get_normalization_factors();
         let zoom = canvas_panel_state.zoom;
         let pan_px = canvas_panel_state.pan_px;
-        let canvas = &canvas_panel_state.canvas;
+        let canvas_dim = &canvas_panel_state.canvas.dimensions();
 
         // Convert the pan to uv units before starting.
-        let pan_uv_x = pan_px.x / canvas.width() as f32;
-        let pan_uv_y = pan_px.y / canvas.height() as f32;
+        let pan_uv_x = pan_px.x / canvas_dim.width() as f32;
+        let pan_uv_y = pan_px.y / canvas_dim.height() as f32;
 
         let panel_uv_x = panel_pos.x / canvas_rect.width();
         let panel_uv_y = panel_pos.y / canvas_rect.height();
@@ -41,8 +41,8 @@ impl CanvasPos {
         let final_canvas_uv_x = (base_canvas_uv_x / zoom) - pan_uv_x + 0.5;
         let final_canvas_uv_y = (base_canvas_uv_y / zoom) - pan_uv_y + 0.5;
 
-        let x_px = (final_canvas_uv_x * canvas.width() as f32).floor() as i32;
-        let y_px = (final_canvas_uv_y * canvas.height() as f32).floor() as i32;
+        let x_px = (final_canvas_uv_x * canvas_dim.width() as f32).floor() as i32;
+        let y_px = (final_canvas_uv_y * canvas_dim.height() as f32).floor() as i32;
 
         CanvasPos { x: x_px, y: y_px }
     }

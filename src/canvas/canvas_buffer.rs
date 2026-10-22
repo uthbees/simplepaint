@@ -1,11 +1,11 @@
 use crate::canvas::canvas_pos::CanvasPos;
+use crate::dimensions::{DimensionsPx, DimensionsPxNonzero};
 use egui::Rgba;
 use tiny_skia::{Color, LineCap, LineJoin, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
 /// Stores and manages the state of the canvas. Data is stored in a CPU-side 2D pixel buffer.
 pub struct CanvasBuffer {
-    width: u32,
-    height: u32,
+    dimensions: DimensionsPxNonzero,
     /// Row-major layout: pixel `(x, y)` is at index `y * width + x`.
     pixmap: Pixmap,
     /// Whether the buffer has been modified since the last GPU upload.
@@ -14,11 +14,10 @@ pub struct CanvasBuffer {
 
 impl CanvasBuffer {
     /// Creates a new canvas filled with a solid white background.
-    pub fn new(width: u32, height: u32) -> Self {
+    pub fn new(dimensions: DimensionsPx) -> Self {
         let mut buffer = Self {
-            width,
-            height,
-            pixmap: Pixmap::new(width, height)
+            dimensions: dimensions.to_nonzero(),
+            pixmap: Pixmap::new(dimensions.width, dimensions.height)
                 .expect("Pixmap row size should fit in an i32 and width/height should not be zero"),
             dirty: false,
         };
@@ -26,12 +25,8 @@ impl CanvasBuffer {
         buffer
     }
 
-    pub fn width(&self) -> u32 {
-        self.width
-    }
-
-    pub fn height(&self) -> u32 {
-        self.height
+    pub fn dimensions(&self) -> DimensionsPxNonzero {
+        self.dimensions
     }
 
     /// Exports the entire buffer as a flat premultiplied RGBA byte slice.
