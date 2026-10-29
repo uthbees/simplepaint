@@ -23,7 +23,7 @@ impl LeftPanel {
     /// Draws the left-hand side panel containing basic tool/color indicators.
     pub fn draw(egui_ui: &mut egui::Ui, ui_config: &mut UiConfig) {
         Panel::left("left_panel")
-            .exact_size(250.0)
+            .exact_size(230.0)
             .resizable(false)
             .show(egui_ui, |egui_ui| {
                 Panel::bottom("color_panel")

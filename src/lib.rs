@@ -44,13 +44,14 @@ impl ApplicationHandler for App {
 
         let window_attrs = Window::default_attributes()
             .with_title(WINDOW_TITLE)
+            .with_inner_size(LogicalSize::new(1200.0, 800.0))
+            .with_min_inner_size(LogicalSize::new(800.0, 300.0))
             .with_visible(false);
         let window = Arc::new(
             event_loop
                 .create_window(window_attrs)
                 .expect("Failed to create window"),
         );
-        window.set_min_inner_size(Some(LogicalSize::new(300.0, 300.0)));
 
         // Build egui context and winit state.
         let viewport_id = ViewportId::ROOT;
