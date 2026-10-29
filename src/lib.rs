@@ -88,8 +88,7 @@ impl ApplicationHandler for App {
         let layers = &canvas.layers;
         // This section will need updating if it becomes possible to start the app with
         // more than one layer.
-        // TODO: Uncomment this
-        // assert_eq!(layers.len(), 1);
+        assert_eq!(layers.len(), 1);
         #[allow(clippy::cast_sign_loss)]
         let mut canvas_gpu = CanvasGpu::new(
             &render_state,

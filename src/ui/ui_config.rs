@@ -40,8 +40,7 @@ impl UiConfig {
             ],
             selected_layer_idx: Some(0),
             enabled_layers: EnabledLayersConfig {
-                // TODO: Make this only have one layer when implementing the layers UI
-                states: vec![true, true],
+                states: vec![true],
                 dirty: false,
             },
         }

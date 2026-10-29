@@ -16,7 +16,7 @@ impl Canvas {
     pub fn new(dimensions: DimensionsPxNonzero) -> Canvas {
         Canvas {
             dimensions,
-            layers: vec![Layer::new(dimensions), Layer::new(dimensions)],
+            layers: vec![Layer::new(dimensions)],
         }
     }
 

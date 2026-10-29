@@ -37,8 +37,6 @@ impl CanvasGpu {
 
         let mut layers = Layers::new(device);
         layers.add_layer(device, queue, canvas_dimensions, initial_pixels);
-        // TODO: Don't forget to remove the second layer
-        layers.add_layer(device, queue, canvas_dimensions, initial_pixels);
 
         let composite_canvas = CompositeCanvas::new(device, &layers, canvas_dimensions);
 
