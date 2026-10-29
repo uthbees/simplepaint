@@ -184,7 +184,7 @@ impl AppState {
         self.canvas_gpu.render_canvas_view(
             &self.render_state.device,
             &self.render_state.queue,
-            &mut self.ui_manager.config.enabled_layers,
+            &mut self.ui_manager.state.enabled_layers,
         );
 
         // Handle egui platform output (cursor, clipboard, etc.).

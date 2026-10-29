@@ -7,7 +7,7 @@ pub struct EnabledLayersConfig {
     pub dirty: bool,
 }
 
-pub struct UiConfig {
+pub struct UiState {
     pub foreground_color: Rgba,
     pub background_color: Rgba,
 
@@ -17,12 +17,12 @@ pub struct UiConfig {
     pub enabled_layers: EnabledLayersConfig,
 }
 
-impl UiConfig {
-    pub fn new() -> UiConfig {
+impl UiState {
+    pub fn new() -> UiState {
         let mut recent_colors = VecDeque::with_capacity(10);
         recent_colors.resize(10, None);
 
-        UiConfig {
+        UiState {
             foreground_color: Rgba::BLACK,
             background_color: Rgba::WHITE,
             recent_colors,

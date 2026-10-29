@@ -1,4 +1,4 @@
-use crate::ui::ui_config::UiConfig;
+use crate::ui::ui_state::UiState;
 use egui::color_picker::{Alpha, color_picker_hsva_2d, show_color_at};
 use egui::ecolor::Hsva;
 use egui::{
@@ -21,7 +21,7 @@ pub struct LeftPanel {}
 
 impl LeftPanel {
     /// Draws the left-hand side panel containing basic tool/color indicators.
-    pub fn draw(ui: &mut Ui, ui_config: &mut UiConfig) {
+    pub fn draw(ui: &mut Ui, ui_state: &mut UiState) {
         Panel::left("left_panel")
             .exact_size(230.0)
             .resizable(false)
@@ -30,16 +30,16 @@ impl LeftPanel {
                     .exact_size(200.0)
                     .resizable(false)
                     .show(ui, |ui| {
-                        Self::draw_colors(ui, ui_config);
+                        Self::draw_colors(ui, ui_state);
                     });
                 Panel::top("tools_panel").resizable(false).show(ui, |ui| {
-                    Self::draw_tools(ui, ui_config);
+                    Self::draw_tools(ui, ui_state);
                 });
             });
     }
 
     #[allow(unused_variables)]
-    fn draw_tools(ui: &mut Ui, ui_config: &mut UiConfig) {
+    fn draw_tools(ui: &mut Ui, ui_state: &mut UiState) {
         ui.add_space(8.0);
         ui.heading("SimplePaint");
         ui.separator();
@@ -49,24 +49,24 @@ impl LeftPanel {
         ui.label("Paintbrush");
     }
 
-    fn draw_colors(ui: &mut Ui, ui_config: &mut UiConfig) {
+    fn draw_colors(ui: &mut Ui, ui_state: &mut UiState) {
         ui.add_space(4.0);
-        Self::draw_fg_bg_colors(ui, ui_config);
+        Self::draw_fg_bg_colors(ui, ui_state);
 
         ui.add_space(8.0);
         ui.separator();
-        Self::draw_recent_colors(ui, ui_config);
+        Self::draw_recent_colors(ui, ui_state);
 
         ui.add_space(4.0);
         ui.separator();
-        Self::draw_preset_colors(ui, ui_config);
+        Self::draw_preset_colors(ui, ui_state);
     }
 
     /// Draws two overlapping color swatch boxes: foreground (top-left, in front)
     /// and background (bottom-right, behind). Clicking either opens a color picker
     /// popup; releasing the mouse with a color picker open or closing the popup saves
     /// the color to the list of 10 most recently used colors.
-    fn draw_fg_bg_colors(ui: &mut Ui, ui_config: &mut UiConfig) {
+    fn draw_fg_bg_colors(ui: &mut Ui, ui_state: &mut UiState) {
         let box_size = egui::vec2(LARGE_SWATCH_SIZE, LARGE_SWATCH_SIZE);
         let total_size = egui::vec2(
             LARGE_SWATCH_SIZE + BACKGROUND_COLOR_SWATCH_OFFSET,
@@ -96,9 +96,9 @@ impl LeftPanel {
         let fg_response = ui.interact(fg_rect, fg_id, Sense::click());
 
         // Draw background swatch (behind).
-        Self::draw_large_swatch(ui, bg_rect, ui_config.background_color, &bg_response);
+        Self::draw_large_swatch(ui, bg_rect, ui_state.background_color, &bg_response);
         // Draw foreground swatch (in front).
-        Self::draw_large_swatch(ui, fg_rect, ui_config.foreground_color, &fg_response);
+        Self::draw_large_swatch(ui, fg_rect, ui_state.foreground_color, &fg_response);
 
         // Popup for the foreground color picker.
         let fg_popup_id = ui.make_persistent_id("fg_color_popup");
@@ -107,7 +107,7 @@ impl LeftPanel {
             &fg_response,
             fg_popup_id,
             MainColorPicker::Foreground,
-            ui_config,
+            ui_state,
         );
 
         // Popup for the background color picker.
@@ -117,7 +117,7 @@ impl LeftPanel {
             &bg_response,
             bg_popup_id,
             MainColorPicker::Background,
-            ui_config,
+            ui_state,
         );
     }
 
@@ -141,12 +141,12 @@ impl LeftPanel {
         trigger_response: &egui::Response,
         popup_id: Id,
         color_picker: MainColorPicker,
-        ui_config: &mut UiConfig,
+        ui_state: &mut UiState,
     ) {
         let color = match color_picker {
-            MainColorPicker::Foreground => &mut ui_config.foreground_color,
+            MainColorPicker::Foreground => &mut ui_state.foreground_color,
 
-            MainColorPicker::Background => &mut ui_config.background_color,
+            MainColorPicker::Background => &mut ui_state.background_color,
         };
 
         let was_open_before = Popup::is_id_open(ui.ctx(), popup_id);
@@ -180,25 +180,25 @@ impl LeftPanel {
         let mouse_released = ui.input(|i| i.pointer.any_released());
         let color = *color;
         if was_open_before && (mouse_released || !is_open_after) {
-            ui_config.push_recent_color(color);
+            ui_state.push_recent_color(color);
         }
 
         // Persist the hsva so hue is stable across frames.
         ui.data_mut(|d| d.insert_temp(cache_id, hsva));
     }
 
-    fn draw_recent_colors(ui: &mut Ui, ui_config: &mut UiConfig) {
+    fn draw_recent_colors(ui: &mut Ui, ui_state: &mut UiState) {
         ui.add_space(4.0);
         ui.label(RichText::new("Recent").strong());
 
         Self::draw_small_swatch_row(
             ui,
-            ui_config.get_recent_colors(),
+            ui_state.get_recent_colors(),
             |_, response, (_, color)| {
                 if response.clicked() {
-                    ui_config.foreground_color = color;
+                    ui_state.foreground_color = color;
                 } else if response.secondary_clicked() {
-                    ui_config.background_color = color;
+                    ui_state.background_color = color;
                 }
                 response.on_hover_text(
                     "Left click to set as foreground, right click to set as background.",
@@ -207,11 +207,11 @@ impl LeftPanel {
         );
     }
 
-    fn draw_preset_colors(ui: &mut Ui, ui_config: &mut UiConfig) {
+    fn draw_preset_colors(ui: &mut Ui, ui_state: &mut UiState) {
         ui.add_space(4.0);
         ui.label(RichText::new("Presets").strong());
 
-        let palette_colors = ui_config.palette_colors;
+        let palette_colors = ui_state.palette_colors;
         Self::draw_small_swatch_row(
             ui,
             palette_colors.iter().map(|&color| Some(color)),
@@ -220,11 +220,11 @@ impl LeftPanel {
                 if response.double_clicked() {
                     Popup::open_id(ui.ctx(), popup_id);
                 } else if response.secondary_clicked() {
-                    ui_config.background_color = color;
-                    ui_config.push_recent_color(color);
+                    ui_state.background_color = color;
+                    ui_state.push_recent_color(color);
                 } else if response.clicked() {
-                    ui_config.foreground_color = color;
-                    ui_config.push_recent_color(color);
+                    ui_state.foreground_color = color;
+                    ui_state.push_recent_color(color);
                 }
 
                 let open = Popup::is_id_open(ui.ctx(), popup_id);
@@ -241,14 +241,14 @@ impl LeftPanel {
                         .show(|ui| {
                             ui.spacing_mut().slider_width = COLOR_SLIDER_WIDTH;
                             color_picker_hsva_2d(ui, &mut hsva, Alpha::OnlyBlend);
-                            ui_config.palette_colors[index] = Rgba::from(hsva);
+                            ui_state.palette_colors[index] = Rgba::from(hsva);
                         });
 
                     ui.data_mut(|d| d.insert_temp(cache_id, hsva));
 
                     if ui.input(|i| i.pointer.any_released()) {
-                        ui_config.foreground_color = color;
-                        ui_config.push_recent_color(color);
+                        ui_state.foreground_color = color;
+                        ui_state.push_recent_color(color);
                     }
                 }
 

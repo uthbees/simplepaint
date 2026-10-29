@@ -7,7 +7,7 @@ mod composite_canvas;
 mod layers;
 
 use crate::dimensions::DimensionsPxNonzero;
-use crate::ui::ui_config::EnabledLayersConfig;
+use crate::ui::ui_state::EnabledLayersConfig;
 use camera::Camera;
 use canvas_view::CanvasView;
 use composite_canvas::CompositeCanvas;

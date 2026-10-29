@@ -2,7 +2,7 @@ use crate::dimensions::{DimensionsPx, DimensionsPxNonzero};
 use crate::gpu::camera::Camera;
 use crate::gpu::composite_canvas::CompositeCanvas;
 use crate::gpu::layers::Layers;
-use crate::ui::ui_config::EnabledLayersConfig;
+use crate::ui::ui_state::EnabledLayersConfig;
 use egui_wgpu::RenderState;
 use std::iter;
 use wgpu::PipelineCompilationOptions;

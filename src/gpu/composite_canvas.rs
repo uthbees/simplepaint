@@ -1,6 +1,6 @@
 use crate::dimensions::DimensionsPxNonzero;
 use crate::gpu::layers::Layers;
-use crate::ui::ui_config::EnabledLayersConfig;
+use crate::ui::ui_state::EnabledLayersConfig;
 use std::iter;
 use wgpu::PipelineCompilationOptions;
 

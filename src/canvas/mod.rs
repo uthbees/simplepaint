@@ -1,6 +1,6 @@
 use crate::canvas::canvas_pos::CanvasPos;
 use crate::dimensions::DimensionsPxNonzero;
-use crate::ui::ui_config::UiConfig;
+use crate::ui::ui_state::UiState;
 use layer::Layer;
 use tiny_skia::{Color, LineCap, LineJoin, Paint, PathBuilder, Stroke, Transform};
 
@@ -31,9 +31,9 @@ impl Canvas {
         pos1: CanvasPos,
         pos2: CanvasPos,
         thickness: f32,
-        ui_config: &UiConfig,
+        ui_state: &UiState,
     ) {
-        let Some(active_layer) = self.get_active_layer(ui_config) else {
+        let Some(active_layer) = self.get_active_layer(ui_state) else {
             return;
         };
 
@@ -57,7 +57,7 @@ impl Canvas {
             ..Stroke::default()
         };
 
-        let raw_color = ui_config.foreground_color;
+        let raw_color = ui_state.foreground_color;
         let converted_color: Color = Color::from_rgba(
             raw_color[0].clamp(0.0, 1.0),
             raw_color[1].clamp(0.0, 1.0),
@@ -75,8 +75,8 @@ impl Canvas {
         active_layer.dirty = true;
     }
 
-    fn get_active_layer(&mut self, ui_config: &UiConfig) -> Option<&mut Layer> {
-        let selected_layer_idx = ui_config.selected_layer_idx?;
+    fn get_active_layer(&mut self, ui_state: &UiState) -> Option<&mut Layer> {
+        let selected_layer_idx = ui_state.selected_layer_idx?;
         assert!(selected_layer_idx < self.layers.len());
         Some(&mut self.layers[selected_layer_idx])
     }

@@ -4,7 +4,7 @@ use crate::dimensions::{DimensionsPx, DimensionsPxNonzero};
 use crate::ui::scrollbar::{
     SCROLLBAR_TRACK_COLOR, SCROLLBAR_TRACK_SIZE_PT, Scrollbar, ScrollbarAxis,
 };
-use crate::ui::ui_config::UiConfig;
+use crate::ui::ui_state::UiState;
 use egui::{CentralPanel, Ui, Vec2};
 
 const DEFAULT_CANVAS_HEIGHT: u32 = 500;
@@ -61,7 +61,7 @@ impl CanvasPanel {
         (self.canvas_view_dimensions_pts * self.egui_ctx.pixels_per_point()).into()
     }
 
-    pub fn draw(&mut self, ui: &mut Ui, ui_config: &UiConfig) {
+    pub fn draw(&mut self, ui: &mut Ui, ui_state: &UiState) {
         CentralPanel::default().show(ui, |ui| {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
             let panel_rect = ui.available_rect_before_wrap();
@@ -83,7 +83,7 @@ impl CanvasPanel {
                     egui::Color32::WHITE,
                 );
             }
-            self.handle_canvas_view_input(ui, ui_config, &response);
+            self.handle_canvas_view_input(ui, ui_state, &response);
 
             self.draw_scrollbars(ui, panel_rect, canvas_view_rect);
         });
@@ -152,7 +152,7 @@ impl CanvasPanel {
     fn handle_canvas_view_input(
         &mut self,
         ui: &mut Ui,
-        ui_config: &UiConfig,
+        ui_state: &UiState,
         response: &egui::Response,
     ) {
         if response.hovered() {
@@ -162,7 +162,7 @@ impl CanvasPanel {
         if response.drag_stopped() {
             self.last_drag_pos = None;
         } else if response.dragged() {
-            self.handle_dragged(ui, ui_config, response);
+            self.handle_dragged(ui, ui_state, response);
         }
     }
 
@@ -204,7 +204,7 @@ impl CanvasPanel {
     fn handle_dragged(
         &mut self,
         ui: &mut Ui,
-        ui_config: &UiConfig,
+        ui_state: &UiState,
         canvas_response: &egui::Response,
     ) {
         if let Some(cursor_pos) = ui.input(|i| i.pointer.interact_pos()) {
@@ -214,7 +214,7 @@ impl CanvasPanel {
             let pos_px = CanvasPos::from_panel_pos(relative_pos, rect, self);
 
             self.canvas
-                .draw_line(pos_px, self.last_drag_pos.unwrap_or(pos_px), 1.0, ui_config);
+                .draw_line(pos_px, self.last_drag_pos.unwrap_or(pos_px), 1.0, ui_state);
             self.last_drag_pos = Some(pos_px);
         }
     }
