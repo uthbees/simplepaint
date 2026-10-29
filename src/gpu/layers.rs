@@ -102,13 +102,8 @@ impl Layers {
         self.dirty = true;
     }
 
-    pub fn for_each_layer(&self, mut callback: impl FnMut(usize, &LayerResources)) {
-        self.stack
-            .iter()
-            .enumerate()
-            .for_each(|(i, layer_resources)| {
-                callback(i, layer_resources);
-            });
+    pub fn for_each_layer(&self, callback: impl FnMut((usize, &LayerResources))) {
+        self.stack.iter().enumerate().for_each(callback);
     }
 
     fn create_layer_resources(

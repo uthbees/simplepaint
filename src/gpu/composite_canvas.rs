@@ -123,7 +123,7 @@ impl CompositeCanvas {
 
             render_pass.set_pipeline(&self.pipeline);
 
-            layers.for_each_layer(|i, layer| {
+            layers.for_each_layer(|(i, layer)| {
                 if enabled_layers_config.states()[i] {
                     render_pass.set_bind_group(0, &layer.composition_bind_group, &[]);
                     render_pass.draw(0..3, 0..1);
