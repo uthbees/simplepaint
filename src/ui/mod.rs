@@ -1,10 +1,12 @@
 pub mod canvas_panel;
 mod left_panel;
+mod right_panel;
 mod scrollbar;
 pub mod ui_config;
 
 use canvas_panel::CanvasPanel;
 use left_panel::LeftPanel;
+use right_panel::RightPanel;
 use ui_config::UiConfig;
 
 pub struct Ui {
@@ -22,6 +24,7 @@ impl Ui {
 
     pub fn draw(&mut self, egui_ui: &mut egui::Ui) {
         LeftPanel::draw(egui_ui, &mut self.config);
+        RightPanel::draw(egui_ui, &mut self.config);
         self.canvas_panel.draw(egui_ui, &self.config);
     }
 }
