@@ -1,17 +1,18 @@
 use crate::app_state::canvas::layer::Layer;
 use crate::gpu::CanvasGpu;
 use crate::utils::dimensions::DimensionsPxNonzero;
-
-pub struct LayerResources {
-    pub texture: wgpu::Texture,
-    pub composition_bind_group: wgpu::BindGroup,
-}
+use std::collections::HashMap;
 
 pub struct Layers {
     sampler: wgpu::Sampler,
     composition_bind_group_layout: wgpu::BindGroupLayout,
-    stack: Vec<LayerResources>,
+    layer_map: HashMap<i32, LayerResources>,
     pub dirty: bool,
+}
+
+pub struct LayerResources {
+    pub texture: wgpu::Texture,
+    pub composition_bind_group: wgpu::BindGroup,
 }
 
 impl Layers {
@@ -53,7 +54,7 @@ impl Layers {
         Self {
             sampler,
             composition_bind_group_layout,
-            stack: vec![],
+            layer_map: HashMap::new(),
             dirty: false,
         }
     }
@@ -62,8 +63,8 @@ impl Layers {
         &self.composition_bind_group_layout
     }
 
-    pub fn count(&self) -> usize {
-        self.stack.len()
+    pub fn layer_map(&self) -> &HashMap<i32, LayerResources> {
+        &self.layer_map
     }
 
     pub fn add_layer(
@@ -71,12 +72,13 @@ impl Layers {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         canvas_dimensions: DimensionsPxNonzero,
+        layer_id: i32,
         initial_pixels: &[u8],
     ) {
         let new_layer = self.create_layer_resources(device, canvas_dimensions);
         CanvasGpu::write_texture(queue, &new_layer.texture, canvas_dimensions, initial_pixels);
 
-        self.stack.push(new_layer);
+        self.layer_map.insert(layer_id, new_layer);
         self.dirty = true;
     }
 
@@ -84,26 +86,28 @@ impl Layers {
     pub fn upload_layer(
         &mut self,
         queue: &wgpu::Queue,
-        layer_buffer: &Layer,
-        layer_index: usize,
+        cpu_layer: &Layer,
         canvas_dimensions: DimensionsPxNonzero,
     ) {
-        if layer_index >= self.stack.len() {
-            eprintln!("Error: layer_index out of bounds in upload_layer");
+        if !self.layer_map.contains_key(cpu_layer.id()) {
+            eprintln!(
+                "Error: Tried to upload data to an unregistered layer ({}).",
+                cpu_layer.id()
+            );
             return;
         }
+        let gpu_layer = &self
+            .layer_map
+            .get(cpu_layer.id())
+            .expect("Should have validated that map contains layer");
 
         CanvasGpu::write_texture(
             queue,
-            &self.stack[layer_index].texture,
+            &gpu_layer.texture,
             canvas_dimensions,
-            layer_buffer.as_bytes(),
+            cpu_layer.buffer_as_bytes(),
         );
         self.dirty = true;
-    }
-
-    pub fn for_each_layer(&self, callback: impl FnMut((usize, &LayerResources))) {
-        self.stack.iter().enumerate().for_each(callback);
     }
 
     fn create_layer_resources(

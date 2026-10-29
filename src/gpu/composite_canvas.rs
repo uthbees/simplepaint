@@ -1,4 +1,3 @@
-use crate::app_state::canvas::EnabledLayersConfig;
 use crate::gpu::layers::Layers;
 use crate::utils::dimensions::DimensionsPxNonzero;
 use std::iter;
@@ -9,7 +8,12 @@ use wgpu::PipelineCompilationOptions;
 pub struct CompositeCanvas {
     pipeline: wgpu::RenderPipeline,
     texture_view: wgpu::TextureView,
+    last_draw_layers_command: Option<DrawLayersCommand>,
 }
+
+/// An array of layer ids specifying which layers to draw and in what order.
+#[derive(PartialEq)]
+pub struct DrawLayersCommand(pub Vec<i32>);
 
 impl CompositeCanvas {
     pub fn new(
@@ -72,6 +76,7 @@ impl CompositeCanvas {
         Self {
             pipeline,
             texture_view,
+            last_draw_layers_command: None,
         }
     }
 
@@ -86,12 +91,11 @@ impl CompositeCanvas {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         layers: &mut Layers,
-        enabled_layers_config: &mut EnabledLayersConfig,
+        draw_layers_command: DrawLayersCommand,
     ) {
-        if !layers.dirty && !enabled_layers_config.dirty {
+        if !layers.dirty && self.last_draw_layers_command.as_ref() == Some(&draw_layers_command) {
             return;
         }
-        assert_eq!(layers.count(), enabled_layers_config.states().len());
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("composite_canvas_render_encoder"),
@@ -123,16 +127,22 @@ impl CompositeCanvas {
 
             render_pass.set_pipeline(&self.pipeline);
 
-            layers.for_each_layer(|(i, layer)| {
-                if enabled_layers_config.states()[i] {
+            let layer_map = layers.layer_map();
+            for layer_id in &draw_layers_command.0 {
+                if let Some(layer) = layer_map.get(layer_id) {
                     render_pass.set_bind_group(0, &layer.composition_bind_group, &[]);
                     render_pass.draw(0..3, 0..1);
+                } else {
+                    eprintln!(
+                        "GPU-side layer {} not found, skipping rendering for layer.",
+                        layer_id
+                    );
                 }
-            });
+            }
         }
 
         queue.submit(iter::once(encoder.finish()));
         layers.dirty = false;
-        enabled_layers_config.dirty = false;
+        self.last_draw_layers_command = Some(draw_layers_command);
     }
 }

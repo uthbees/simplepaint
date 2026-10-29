@@ -88,13 +88,15 @@ impl ApplicationHandler for AppRunner {
         // Upload the initial canvas to a wgpu texture.
         // This section will need updating if it becomes possible to start the app with
         // more than one layer.
-        assert_eq!(app_state.canvas.layers.len(), 1);
+        assert_eq!(app_state.canvas.layers().len(), 1);
         #[allow(clippy::cast_sign_loss)]
+        let initial_layer = &app_state.canvas.layers()[0];
         let mut canvas_gpu = CanvasGpu::new(
             &render_state,
             app_state.canvas.dimensions(),
             app_state.canvas_view.dimensions,
-            app_state.canvas.layers[0].as_bytes(),
+            *initial_layer.id(),
+            initial_layer.buffer_as_bytes(),
         );
 
         let mut display = Display::new(egui_ctx);
@@ -166,23 +168,23 @@ impl App {
         // Upload the CPU canvas to the GPU if it's changed.
         let canvas = &mut self.app_state.canvas;
         let canvas_dimensions = canvas.dimensions();
-        canvas.layers.iter_mut().enumerate().for_each(|(i, layer)| {
+        canvas.layers_iter_mut().for_each(|layer| {
             if layer.dirty {
                 self.canvas_gpu.layers().upload_layer(
                     &self.render_state.queue,
                     layer,
-                    i,
                     canvas_dimensions,
                 );
                 layer.dirty = false;
             }
         });
 
-        // Render canvas texture with pan/zoom shader onto the canvas panel texture.
+        // Render the canvas texture onto the canvas view texture with the pan/zoom shader
+        // and layer configuration.
         self.canvas_gpu.render_canvas_view(
             &self.render_state.device,
             &self.render_state.queue,
-            self.app_state.canvas.enabled_layers(),
+            self.app_state.canvas.layers(),
         );
 
         // Handle egui platform output (cursor, clipboard, etc.).

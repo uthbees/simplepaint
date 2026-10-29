@@ -6,7 +6,8 @@ mod canvas_view;
 mod composite_canvas;
 mod layers;
 
-use crate::app_state::canvas::EnabledLayersConfig;
+use crate::app_state::canvas::layer::Layer;
+use crate::gpu::composite_canvas::DrawLayersCommand;
 use crate::utils::dimensions::DimensionsPxNonzero;
 use camera::Camera;
 use canvas_view::CanvasView;
@@ -28,6 +29,7 @@ impl CanvasGpu {
         render_state: &RenderState,
         canvas_dimensions: DimensionsPxNonzero,
         canvas_view_dimensions: DimensionsPxNonzero,
+        initial_layer_id: i32,
         initial_pixels: &[u8],
     ) -> Self {
         let device = &render_state.device;
@@ -36,7 +38,13 @@ impl CanvasGpu {
         let camera = Camera::new(device);
 
         let mut layers = Layers::new(device);
-        layers.add_layer(device, queue, canvas_dimensions, initial_pixels);
+        layers.add_layer(
+            device,
+            queue,
+            canvas_dimensions,
+            initial_layer_id,
+            initial_pixels,
+        );
 
         let composite_canvas = CompositeCanvas::new(device, &layers, canvas_dimensions);
 
@@ -72,14 +80,21 @@ impl CanvasGpu {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        enabled_layers_config: &mut EnabledLayersConfig,
+        cpu_layers: &[Layer],
     ) {
+        let mut draw_layers_command = DrawLayersCommand(vec![]);
+        for cpu_layer in cpu_layers {
+            if cpu_layer.enabled {
+                draw_layers_command.0.push(*cpu_layer.id());
+            }
+        }
+
         self.canvas_view.render(
             device,
             queue,
             &mut self.composite_canvas,
             &mut self.layers,
-            enabled_layers_config,
+            draw_layers_command,
         );
     }
 

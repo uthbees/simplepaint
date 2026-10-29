@@ -344,6 +344,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "concat-idents"
+version = "1.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f76990911f2267d837d9d0ad060aa63aaad170af40904b29461734c339030d4d"
+dependencies = [
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -547,6 +557,29 @@ dependencies = [
  "webbrowser",
  "windows-sys 0.61.2",
  "winit",
+]
+
+[[package]]
+name = "egui_animation"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d49c21f8e290bf74daa1aa7b427b59867dfb99a3163c54a8b3cdf11cd23d666"
+dependencies = [
+ "egui",
+ "hello_egui_utils",
+ "simple-easing",
+]
+
+[[package]]
+name = "egui_dnd"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5a25d3fcfaad1b1c1d014417833be9c696b8e5cc7f72d7d596e844792defa6b"
+dependencies = [
+ "egui",
+ "egui_animation",
+ "simple-easing",
+ "web-time",
 ]
 
 [[package]]
@@ -907,6 +940,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 dependencies = [
  "foldhash 0.2.0",
+]
+
+[[package]]
+name = "hello_egui_utils"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7603a9aae296e0626c31a715651adc82dcdf85fb3b97ebe3c460606ae427f6d"
+dependencies = [
+ "concat-idents",
+ "egui",
 ]
 
 [[package]]
@@ -2207,6 +2250,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
+name = "simple-easing"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "99968bca2a24946625e54935909e9c1c314066a1005f5a302a5e4bfc83b0239a"
+
+[[package]]
 name = "simplepaint"
 version = "0.1.0"
 dependencies = [
@@ -2214,6 +2263,7 @@ dependencies = [
  "egui",
  "egui-wgpu",
  "egui-winit",
+ "egui_dnd",
  "pollster",
  "tiny-skia 0.12.0",
  "wgpu",
