@@ -10,14 +10,20 @@ pub struct Layer {
 }
 
 impl Layer {
-    /// Creates a new layer filled with a solid white background.
-    pub fn new(dimensions: DimensionsPxNonzero) -> Self {
+    /// Creates a new layer filled with a solid background, either transparent or white.
+    pub fn new(dimensions: DimensionsPxNonzero, fill_white: bool) -> Self {
         let mut buffer = Self {
             pixmap: Pixmap::new(dimensions.width(), dimensions.height())
                 .expect("Pixmap row size should fit in an i32 and width/height should not be zero"),
             dirty: false,
         };
-        buffer.pixmap.fill(Color::TRANSPARENT);
+        let fill_color = if fill_white {
+            Color::WHITE
+        } else {
+            Color::TRANSPARENT
+        };
+
+        buffer.pixmap.fill(fill_color);
         buffer
     }
 
