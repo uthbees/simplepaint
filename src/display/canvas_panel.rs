@@ -1,27 +1,14 @@
-use crate::canvas::Canvas;
-use crate::canvas::canvas_pos::CanvasPos;
-use crate::dimensions::{DimensionsPx, DimensionsPxNonzero};
-use crate::ui::scrollbar::{
+use crate::app_state::AppState;
+use crate::app_state::canvas::canvas_pos::CanvasPos;
+use crate::display::scrollbar::{
     SCROLLBAR_TRACK_COLOR, SCROLLBAR_TRACK_SIZE_PT, Scrollbar, ScrollbarAxis,
 };
-use crate::ui::ui_state::UiState;
 use egui::{CentralPanel, Ui, Vec2};
-
-const DEFAULT_CANVAS_HEIGHT: u32 = 500;
-const DEFAULT_CANVAS_WIDTH: u32 = 500;
 
 pub struct CanvasPanel {
     egui_ctx: egui::Context,
-    canvas_view_dimensions_pts: egui::Rect,
     canvas_view_texture_id: Option<egui::TextureId>,
     scrollbars: CanvasPanelScrollbars,
-    pub canvas: Canvas,
-    /// The x/y pan offset of the center of the canvas from the center of the panel.
-    /// Measured in canvas pixels. (0, 0) puts the center of the canvas in the center of the panel.
-    pub pan_px: Vec2,
-    /// Canvas zoom. Larger numbers zoom in, smaller numbers zoom out.
-    /// 1 is 1:1 screen px:canvas px, 2 is 2:1 screen px:canvas px, 0.5 is 1:2 screen px:canvas px.
-    pub zoom: f32,
     pub last_drag_pos: Option<CanvasPos>,
 }
 
@@ -34,21 +21,11 @@ impl CanvasPanel {
     pub fn new(egui_ctx: egui::Context) -> Self {
         Self {
             egui_ctx,
-            canvas_view_dimensions_pts: egui::Rect::from_min_max(
-                egui::Pos2::ZERO,
-                egui::Pos2::ZERO,
-            ),
             canvas_view_texture_id: None,
             scrollbars: CanvasPanelScrollbars {
                 horizontal: Scrollbar::new(ScrollbarAxis::Horizontal),
                 vertical: Scrollbar::new(ScrollbarAxis::Vertical),
             },
-            canvas: Canvas::new(DimensionsPxNonzero::new(
-                DEFAULT_CANVAS_WIDTH,
-                DEFAULT_CANVAS_HEIGHT,
-            )),
-            pan_px: Vec2::ZERO,
-            zoom: 1.0,
             last_drag_pos: None,
         }
     }
@@ -57,11 +34,7 @@ impl CanvasPanel {
         self.canvas_view_texture_id = Some(texture_id);
     }
 
-    pub fn canvas_view_dimensions(&self) -> DimensionsPx {
-        (self.canvas_view_dimensions_pts * self.egui_ctx.pixels_per_point()).into()
-    }
-
-    pub fn draw(&mut self, ui: &mut Ui, ui_state: &UiState) {
+    pub fn draw(&mut self, ui: &mut Ui, app_state: &mut AppState) {
         CentralPanel::default().show(ui, |ui| {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
             let panel_rect = ui.available_rect_before_wrap();
@@ -73,7 +46,8 @@ impl CanvasPanel {
 
             let (canvas_view_rect, response) =
                 ui.allocate_exact_size(canvas_size, egui::Sense::DRAG);
-            self.canvas_view_dimensions_pts = canvas_view_rect;
+            app_state.canvas_view.dimensions =
+                (canvas_view_rect * self.egui_ctx.pixels_per_point()).into();
 
             if let Some(canvas_view_texture_id) = self.canvas_view_texture_id {
                 ui.painter().image(
@@ -83,9 +57,9 @@ impl CanvasPanel {
                     egui::Color32::WHITE,
                 );
             }
-            self.handle_canvas_view_input(ui, ui_state, &response);
+            self.handle_canvas_view_input(ui, app_state, &response);
 
-            self.draw_scrollbars(ui, panel_rect, canvas_view_rect);
+            self.draw_scrollbars(ui, app_state, panel_rect, canvas_view_rect);
         });
     }
 
@@ -93,6 +67,7 @@ impl CanvasPanel {
     fn draw_scrollbars(
         &mut self,
         ui: &mut Ui,
+        app_state: &mut AppState,
         panel_rect: egui::Rect,
         canvas_view_rect: egui::Rect,
     ) {
@@ -106,17 +81,20 @@ impl CanvasPanel {
         );
         let corner = egui::Rect::from_min_max(canvas_view_rect.max, panel_rect.max);
 
-        let canvas_view_dim = self.canvas_view_dimensions();
-        let canvas_dim = self.canvas.dimensions();
+        let canvas_view_dim = app_state.canvas_view.dimensions;
+        let canvas_dim = app_state.canvas.dimensions();
+
+        let zoom = app_state.canvas_view.zoom();
+        let pan_px = app_state.canvas_view.pan_px();
 
         // Calculate the viewport fractions, first just with respect to the canvas, then also
         // including the off-canvas scroll buffer.
         let canvas_x_viewport_fraction =
-            canvas_view_dim.width as f32 / (canvas_dim.width() as f32 * self.zoom);
+            canvas_view_dim.width() as f32 / (canvas_dim.width() as f32 * zoom);
         let full_x_viewport_fraction =
             canvas_x_viewport_fraction / (canvas_x_viewport_fraction + 1.0);
         let canvas_y_viewport_fraction =
-            canvas_view_dim.height as f32 / (canvas_dim.height() as f32 * self.zoom);
+            canvas_view_dim.height() as f32 / (canvas_dim.height() as f32 * zoom);
         let full_y_viewport_fraction =
             canvas_y_viewport_fraction / (canvas_y_viewport_fraction + 1.0);
 
@@ -124,26 +102,26 @@ impl CanvasPanel {
             ui,
             horizontal_track,
             full_x_viewport_fraction,
-            -self.pan_px.x / canvas_dim.width() as f32 + 0.5,
+            -pan_px.x / canvas_dim.width() as f32 + 0.5,
         );
         let updated_vertical_pan = self.scrollbars.vertical.draw(
             ui,
             vertical_track,
             full_y_viewport_fraction,
-            -self.pan_px.y / canvas_dim.height() as f32 + 0.5,
+            -pan_px.y / canvas_dim.height() as f32 + 0.5,
         );
 
-        let mut pan_changed = false;
         if let Some(updated_horizontal_pan) = updated_horizontal_pan {
-            pan_changed = true;
-            self.pan_px.x = (0.5 - updated_horizontal_pan) * canvas_dim.width() as f32;
+            app_state.canvas_view.set_pan_px_x(
+                (0.5 - updated_horizontal_pan) * canvas_dim.width() as f32,
+                &app_state.canvas,
+            );
         }
         if let Some(updated_vertical_pan) = updated_vertical_pan {
-            pan_changed = true;
-            self.pan_px.y = (0.5 - updated_vertical_pan) * canvas_dim.height() as f32;
-        }
-        if pan_changed {
-            self.clamp_pan();
+            app_state.canvas_view.set_pan_px_y(
+                (0.5 - updated_vertical_pan) * canvas_dim.height() as f32,
+                &app_state.canvas,
+            );
         }
 
         ui.painter().rect_filled(corner, 0.0, SCROLLBAR_TRACK_COLOR);
@@ -152,33 +130,35 @@ impl CanvasPanel {
     fn handle_canvas_view_input(
         &mut self,
         ui: &mut Ui,
-        ui_state: &UiState,
+        app_state: &mut AppState,
         response: &egui::Response,
     ) {
         if response.hovered() {
-            self.handle_scrolled(ui, response);
+            self.handle_scrolled(ui, app_state, response);
         }
 
         if response.drag_stopped() {
             self.last_drag_pos = None;
         } else if response.dragged() {
-            self.handle_dragged(ui, ui_state, response);
+            self.handle_dragged(ui, app_state, response);
         }
     }
 
-    fn handle_scrolled(&mut self, ui: &Ui, response: &egui::Response) {
+    fn handle_scrolled(&mut self, ui: &Ui, app_state: &mut AppState, response: &egui::Response) {
         let scroll_delta = ui.input(egui::InputState::translation_delta);
         if scroll_delta != Vec2::ZERO {
-            let pan_delta = scroll_delta / self.zoom;
-            self.pan_px += pan_delta;
-            self.clamp_pan();
+            let pan_delta = scroll_delta / app_state.canvas_view.zoom();
+            app_state.canvas_view.set_pan_px(
+                app_state.canvas_view.pan_px() + pan_delta,
+                &app_state.canvas,
+            );
         }
 
         let zoom_delta = ui.input(egui::InputState::zoom_delta);
         #[allow(clippy::float_cmp)]
         if zoom_delta != 1.0 {
-            let old_zoom = self.zoom;
-            let new_zoom = (self.zoom * zoom_delta).clamp(0.1, 10.0);
+            let old_zoom = app_state.canvas_view.zoom();
+            let new_zoom = (old_zoom * zoom_delta).clamp(0.1, 10.0);
 
             let px_per_pt = self.egui_ctx.pixels_per_point();
             let cursor_pos_px = (ui
@@ -187,59 +167,43 @@ impl CanvasPanel {
                 - response.rect.min)
                 * px_per_pt;
 
-            let canvas_view_dim = self.canvas_view_dimensions();
-            let view_center =
-                egui::vec2(canvas_view_dim.width as f32, canvas_view_dim.height as f32) * 0.5;
+            let canvas_view_dim = app_state.canvas_view.dimensions;
+            let view_center = egui::vec2(
+                canvas_view_dim.width() as f32,
+                canvas_view_dim.height() as f32,
+            ) * 0.5;
             let cursor_offset = cursor_pos_px - view_center;
 
             let zoom_factor_delta = 1.0 / new_zoom - 1.0 / old_zoom;
             let pan_delta = cursor_offset * zoom_factor_delta;
 
-            self.pan_px += pan_delta;
-            self.zoom = new_zoom;
-            self.clamp_pan();
+            app_state.canvas_view.set_pan_and_zoom(
+                app_state.canvas_view.pan_px() + pan_delta,
+                new_zoom,
+                &app_state.canvas,
+            );
         }
     }
 
     fn handle_dragged(
         &mut self,
         ui: &mut Ui,
-        ui_state: &UiState,
+        app_state: &mut AppState,
         canvas_response: &egui::Response,
     ) {
         if let Some(cursor_pos) = ui.input(|i| i.pointer.interact_pos()) {
             let rect = canvas_response.rect;
 
             let relative_pos = cursor_pos - rect.min;
-            let pos_px = CanvasPos::from_panel_pos(relative_pos, rect, self);
+            let pos_px = CanvasPos::from_panel_pos(relative_pos, rect, app_state);
 
-            self.canvas
-                .draw_line(pos_px, self.last_drag_pos.unwrap_or(pos_px), 1.0, ui_state);
+            app_state.canvas.draw_line(
+                pos_px,
+                self.last_drag_pos.unwrap_or(pos_px),
+                1.0,
+                app_state.foreground_color,
+            );
             self.last_drag_pos = Some(pos_px);
         }
-    }
-
-    /// Clamps the pan to prevent the edges of the canvas from going beyond the center of the panel.
-    fn clamp_pan(&mut self) {
-        let canvas_dim = self.canvas.dimensions();
-        let half_w = canvas_dim.width() as f32 * 0.5;
-        let half_h = canvas_dim.height() as f32 * 0.5;
-        self.pan_px.x = self.pan_px.x.clamp(-half_w, half_w);
-        self.pan_px.y = self.pan_px.y.clamp(-half_h, half_h);
-    }
-
-    /// Calculates the current normalization factors for the canvas view. These factors can be
-    /// multiplied with the starting uvs (numbers ranging linearly from 0 to 1 across the
-    /// canvas panel coordinates) to normalize the points to a canvas with the proper aspect ratio
-    /// and a 1:1 canvas pixel:screen pixel scale.
-    /// Note that these factors do not account for zooming or panning.
-    pub fn get_normalization_factors(&self) -> [f32; 2] {
-        let canvas_view_dim = self.canvas_view_dimensions();
-        let canvas_dim = self.canvas.dimensions();
-
-        [
-            canvas_view_dim.width as f32 / canvas_dim.width() as f32,
-            canvas_view_dim.height as f32 / canvas_dim.height() as f32,
-        ]
     }
 }

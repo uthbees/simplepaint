@@ -1,6 +1,6 @@
-use crate::canvas::canvas_pos::CanvasPos;
-use crate::dimensions::DimensionsPxNonzero;
-use crate::ui::ui_state::UiState;
+use crate::app_state::canvas::canvas_pos::CanvasPos;
+use crate::utils::dimensions::DimensionsPxNonzero;
+use egui::Rgba;
 use layer::Layer;
 use tiny_skia::{Color, LineCap, LineJoin, Paint, PathBuilder, Stroke, Transform};
 
@@ -10,6 +10,15 @@ pub mod layer;
 pub struct Canvas {
     dimensions: DimensionsPxNonzero,
     pub layers: Vec<Layer>,
+
+    selected_layer_idx: Option<usize>,
+    enabled_layers: EnabledLayersConfig,
+}
+
+pub struct EnabledLayersConfig {
+    states: Vec<bool>,
+    // Indicates whether there have been any changes here since the last render.
+    pub dirty: bool,
 }
 
 impl Canvas {
@@ -17,6 +26,11 @@ impl Canvas {
         Canvas {
             dimensions,
             layers: vec![Layer::new(dimensions, true)],
+            selected_layer_idx: Some(0),
+            enabled_layers: EnabledLayersConfig {
+                states: vec![true],
+                dirty: false,
+            },
         }
     }
 
@@ -24,16 +38,14 @@ impl Canvas {
         self.dimensions
     }
 
+    pub fn enabled_layers(&mut self) -> &mut EnabledLayersConfig {
+        &mut self.enabled_layers
+    }
+
     /// Draws a line from `pos1` to `pos2` with the specified thickness and color.
     #[allow(clippy::cast_sign_loss)]
-    pub fn draw_line(
-        &mut self,
-        pos1: CanvasPos,
-        pos2: CanvasPos,
-        thickness: f32,
-        ui_state: &UiState,
-    ) {
-        let Some(active_layer) = self.get_active_layer(ui_state) else {
+    pub fn draw_line(&mut self, pos1: CanvasPos, pos2: CanvasPos, thickness: f32, raw_color: Rgba) {
+        let Some(active_layer) = self.get_active_layer() else {
             return;
         };
 
@@ -57,7 +69,6 @@ impl Canvas {
             ..Stroke::default()
         };
 
-        let raw_color = ui_state.foreground_color;
         let converted_color: Color = Color::from_rgba(
             raw_color[0].clamp(0.0, 1.0),
             raw_color[1].clamp(0.0, 1.0),
@@ -75,9 +86,15 @@ impl Canvas {
         active_layer.dirty = true;
     }
 
-    fn get_active_layer(&mut self, ui_state: &UiState) -> Option<&mut Layer> {
-        let selected_layer_idx = ui_state.selected_layer_idx?;
+    fn get_active_layer(&mut self) -> Option<&mut Layer> {
+        let selected_layer_idx = self.selected_layer_idx?;
         assert!(selected_layer_idx < self.layers.len());
         Some(&mut self.layers[selected_layer_idx])
+    }
+}
+
+impl EnabledLayersConfig {
+    pub fn states(&self) -> &[bool] {
+        &self.states
     }
 }

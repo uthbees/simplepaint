@@ -1,4 +1,4 @@
-use crate::dimensions::DimensionsPxNonzero;
+use crate::utils::dimensions::DimensionsPxNonzero;
 use tiny_skia::{Color, Pixmap};
 
 /// Stores and manages the state of a canvas layer. Data is stored in a CPU-side 2D pixel buffer.

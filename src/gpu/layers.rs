@@ -1,6 +1,6 @@
-use crate::canvas::layer::Layer;
-use crate::dimensions::DimensionsPxNonzero;
+use crate::app_state::canvas::layer::Layer;
 use crate::gpu::CanvasGpu;
+use crate::utils::dimensions::DimensionsPxNonzero;
 
 pub struct LayerResources {
     pub texture: wgpu::Texture,

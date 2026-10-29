@@ -1,4 +1,4 @@
-use crate::ui::canvas_panel::CanvasPanel;
+use crate::app_state::AppState;
 use bytemuck::{Pod, Zeroable};
 use wgpu::BindingResource;
 use wgpu::util::DeviceExt;
@@ -57,17 +57,20 @@ impl Camera {
 
     /// Updates the `CameraUniform` and uploads the updated data.
     /// Returns the computed aspect ratio correction.
-    pub fn update(&mut self, queue: &wgpu::Queue, canvas_panel_state: &CanvasPanel) -> [f32; 2] {
-        let canvas_dim = canvas_panel_state.canvas.dimensions();
+    pub fn update(&mut self, queue: &wgpu::Queue, app_state: &AppState) -> [f32; 2] {
+        let canvas_dim = app_state.canvas.dimensions();
+        let pan_px = app_state.canvas_view.pan_px();
 
         self.uniform = CameraUniform {
             pan: [
-                canvas_panel_state.pan_px.x / canvas_dim.width() as f32,
-                canvas_panel_state.pan_px.y / canvas_dim.height() as f32,
+                pan_px.x / canvas_dim.width() as f32,
+                pan_px.y / canvas_dim.height() as f32,
             ],
-            zoom: canvas_panel_state.zoom,
+            zoom: app_state.canvas_view.zoom(),
             _padding: 0.0,
-            normalization_factors: canvas_panel_state.get_normalization_factors(),
+            normalization_factors: app_state
+                .canvas_view
+                .get_normalization_factors(&app_state.canvas),
             _padding2: [0.0, 0.0],
         };
 

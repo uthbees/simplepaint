@@ -1,8 +1,8 @@
-use crate::dimensions::{DimensionsPx, DimensionsPxNonzero};
+use crate::app_state::canvas::EnabledLayersConfig;
 use crate::gpu::camera::Camera;
 use crate::gpu::composite_canvas::CompositeCanvas;
 use crate::gpu::layers::Layers;
-use crate::ui::ui_state::EnabledLayersConfig;
+use crate::utils::dimensions::DimensionsPxNonzero;
 use egui_wgpu::RenderState;
 use std::iter;
 use wgpu::PipelineCompilationOptions;
@@ -159,8 +159,7 @@ impl CanvasView {
 
     #[allow(clippy::cast_sign_loss)]
     /// Handles changes to the requested canvas view size.
-    pub fn update_size(&mut self, render_state: &RenderState, requested_dimensions: DimensionsPx) {
-        let new_dimensions = requested_dimensions.to_nonzero();
+    pub fn update_size(&mut self, render_state: &RenderState, new_dimensions: DimensionsPxNonzero) {
         if new_dimensions == self.dimensions {
             return;
         }

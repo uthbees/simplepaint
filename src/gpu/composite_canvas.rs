@@ -1,6 +1,6 @@
-use crate::dimensions::DimensionsPxNonzero;
+use crate::app_state::canvas::EnabledLayersConfig;
 use crate::gpu::layers::Layers;
-use crate::ui::ui_state::EnabledLayersConfig;
+use crate::utils::dimensions::DimensionsPxNonzero;
 use std::iter;
 use wgpu::PipelineCompilationOptions;
 
@@ -91,7 +91,7 @@ impl CompositeCanvas {
         if !layers.dirty && !enabled_layers_config.dirty {
             return;
         }
-        assert_eq!(layers.count(), enabled_layers_config.states.len());
+        assert_eq!(layers.count(), enabled_layers_config.states().len());
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("composite_canvas_render_encoder"),
@@ -124,7 +124,7 @@ impl CompositeCanvas {
             render_pass.set_pipeline(&self.pipeline);
 
             layers.for_each_layer(|i, layer| {
-                if enabled_layers_config.states[i] {
+                if enabled_layers_config.states()[i] {
                     render_pass.set_bind_group(0, &layer.composition_bind_group, &[]);
                     render_pass.draw(0..3, 0..1);
                 }

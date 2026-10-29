@@ -75,3 +75,9 @@ impl DimensionsPxNonzero {
         }
     }
 }
+
+impl From<egui::Rect> for DimensionsPxNonzero {
+    fn from(value: egui::Rect) -> Self {
+        DimensionsPx::from(value).to_nonzero()
+    }
+}

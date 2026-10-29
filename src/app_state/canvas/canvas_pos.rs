@@ -1,4 +1,4 @@
-use crate::ui::canvas_panel::CanvasPanel;
+use crate::app_state::AppState;
 use std::ops::Add;
 
 /// A position in pixels relative to the canvas, with the top left corner being (0, 0).
@@ -21,12 +21,14 @@ impl CanvasPos {
     pub fn from_panel_pos(
         panel_pos: egui::Vec2,
         canvas_rect: egui::Rect,
-        canvas_panel_state: &CanvasPanel,
+        app_state: &AppState,
     ) -> CanvasPos {
-        let norm_factors = canvas_panel_state.get_normalization_factors();
-        let zoom = canvas_panel_state.zoom;
-        let pan_px = canvas_panel_state.pan_px;
-        let canvas_dim = &canvas_panel_state.canvas.dimensions();
+        let norm_factors = app_state
+            .canvas_view
+            .get_normalization_factors(&app_state.canvas);
+        let zoom = app_state.canvas_view.zoom();
+        let pan_px = app_state.canvas_view.pan_px();
+        let canvas_dim = app_state.canvas.dimensions();
 
         // Convert the pan to uv units before starting.
         let pan_uv_x = pan_px.x / canvas_dim.width() as f32;
