@@ -1,13 +1,12 @@
 //! This module is responsible for managing complex interactions with the GPU. It is not
 //! responsible for window or frame management.
 
-mod camera;
-mod canvas_view;
-mod composite_canvas;
-mod layers;
+pub mod camera;
+pub mod canvas_view;
+pub mod composite_canvas;
+pub mod layers;
 
 use crate::app_state::canvas::layer::Layer;
-use crate::gpu::composite_canvas::DrawLayersCommand;
 use crate::utils::dimensions::DimensionsPxNonzero;
 use camera::Camera;
 use canvas_view::CanvasView;
@@ -26,27 +25,19 @@ pub struct CanvasGpu {
 impl CanvasGpu {
     #[must_use]
     pub fn new(
-        render_state: &RenderState,
+        render_state: RenderState,
         canvas_dimensions: DimensionsPxNonzero,
         canvas_view_dimensions: DimensionsPxNonzero,
         initial_layer_id: i32,
         initial_pixels: &[u8],
     ) -> Self {
-        let device = &render_state.device;
-        let queue = &render_state.queue;
+        let camera = Camera::new(render_state.clone());
 
-        let camera = Camera::new(device);
+        let mut layers = Layers::new(render_state.clone());
+        layers.add_layer(canvas_dimensions, initial_layer_id, initial_pixels);
 
-        let mut layers = Layers::new(device);
-        layers.add_layer(
-            device,
-            queue,
-            canvas_dimensions,
-            initial_layer_id,
-            initial_pixels,
-        );
-
-        let composite_canvas = CompositeCanvas::new(device, &layers, canvas_dimensions);
+        let composite_canvas =
+            CompositeCanvas::new(render_state.clone(), &layers, canvas_dimensions);
 
         let canvas_view = CanvasView::new(
             render_state,
@@ -76,51 +67,8 @@ impl CanvasGpu {
         &mut self.canvas_view
     }
 
-    pub fn render_canvas_view(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        cpu_layers: &[Layer],
-    ) {
-        let mut draw_layers_command = DrawLayersCommand(vec![]);
-        for cpu_layer in cpu_layers {
-            if cpu_layer.enabled {
-                draw_layers_command.0.push(*cpu_layer.id());
-            }
-        }
-
-        self.canvas_view.render(
-            device,
-            queue,
-            &mut self.composite_canvas,
-            &mut self.layers,
-            draw_layers_command,
-        );
-    }
-
-    /// Wrapper function for `queue.write_texture`.
-    fn write_texture(
-        queue: &wgpu::Queue,
-        texture: &wgpu::Texture,
-        texture_dimensions: DimensionsPxNonzero,
-        bytes: &[u8],
-    ) {
-        let width = texture_dimensions.width();
-        let height = texture_dimensions.height();
-
-        queue.write_texture(
-            texture.as_image_copy(),
-            bytes,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(width * 4),
-                rows_per_image: Some(height),
-            },
-            wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-        );
+    pub fn render_canvas_view(&mut self, cpu_layers: &[Layer]) {
+        self.canvas_view
+            .render(&mut self.composite_canvas, &mut self.layers, cpu_layers);
     }
 }

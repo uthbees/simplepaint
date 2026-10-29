@@ -1,7 +1,14 @@
 use crate::app_state::AppState;
 use bytemuck::{Pod, Zeroable};
+use egui_wgpu::RenderState;
 use wgpu::BindingResource;
 use wgpu::util::DeviceExt;
+
+pub struct Camera {
+    render_state: RenderState,
+    uniform: CameraUniform,
+    buffer: wgpu::Buffer,
+}
 
 /// Camera parameters passed to the canvas shader.
 #[repr(C)]
@@ -31,13 +38,10 @@ impl Default for CameraUniform {
     }
 }
 
-pub struct Camera {
-    uniform: CameraUniform,
-    buffer: wgpu::Buffer,
-}
-
 impl Camera {
-    pub fn new(device: &wgpu::Device) -> Self {
+    pub fn new(render_state: RenderState) -> Self {
+        let device = &render_state.device;
+
         let camera_uniform = CameraUniform::default();
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("camera_uniform_buffer"),
@@ -46,6 +50,7 @@ impl Camera {
         });
 
         Self {
+            render_state,
             uniform: camera_uniform,
             buffer: camera_buffer,
         }
@@ -57,7 +62,7 @@ impl Camera {
 
     /// Updates the `CameraUniform` and uploads the updated data.
     /// Returns the computed aspect ratio correction.
-    pub fn update(&mut self, queue: &wgpu::Queue, app_state: &AppState) -> [f32; 2] {
+    pub fn update(&mut self, app_state: &AppState) -> [f32; 2] {
         let canvas_dim = app_state.canvas.dimensions();
         let pan_px = app_state.canvas_view.pan_px();
 
@@ -74,7 +79,9 @@ impl Camera {
             _padding2: [0.0, 0.0],
         };
 
-        queue.write_buffer(&self.buffer, 0, bytemuck::bytes_of(&self.uniform));
+        self.render_state
+            .queue
+            .write_buffer(&self.buffer, 0, bytemuck::bytes_of(&self.uniform));
 
         [1.0, 1.0]
     }

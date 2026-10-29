@@ -1,7 +1,7 @@
-use crate::gpu;
 use crate::gpu::camera::Camera;
 use crate::gpu::composite_canvas::{CompositeCanvas, DrawLayersCommand};
 use crate::utils::dimensions::DimensionsPxNonzero;
+use crate::{app_state, gpu};
 use egui_wgpu::RenderState;
 use std::iter;
 use wgpu::PipelineCompilationOptions;
@@ -9,6 +9,7 @@ use wgpu::PipelineCompilationOptions;
 /// The canvas view is the view of the composite canvas that the user sees, taking into account
 /// factors such as pan and zoom. The canvas view texture is what is actually rendered by egui.
 pub struct CanvasView {
+    render_state: RenderState,
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::RenderPipeline,
     texture_view: wgpu::TextureView,
@@ -20,7 +21,7 @@ pub struct CanvasView {
 impl CanvasView {
     #[allow(clippy::too_many_lines)]
     pub fn new(
-        render_state: &RenderState,
+        render_state: RenderState,
         camera: &Camera,
         composite_canvas: &CompositeCanvas,
         canvas_dimensions: DimensionsPxNonzero,
@@ -28,16 +29,18 @@ impl CanvasView {
     ) -> Self {
         let device = &render_state.device;
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("canvas_view_sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Linear,
-            ..Default::default()
-        });
+        let sampler = render_state
+            .device
+            .create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("canvas_view_sampler"),
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                mag_filter: wgpu::FilterMode::Nearest,
+                min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::MipmapFilterMode::Linear,
+                ..Default::default()
+            });
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("canvas_view_bind_group_layout"),
@@ -144,6 +147,7 @@ impl CanvasView {
         );
 
         Self {
+            render_state,
             bind_group,
             pipeline,
             texture_view,
@@ -158,15 +162,15 @@ impl CanvasView {
 
     #[allow(clippy::cast_sign_loss)]
     /// Handles changes to the requested canvas view size.
-    pub fn update_size(&mut self, render_state: &RenderState, new_dimensions: DimensionsPxNonzero) {
+    pub fn update_size(&mut self, new_dimensions: DimensionsPxNonzero) {
         if new_dimensions == self.dimensions {
             return;
         }
 
-        let device = &render_state.device;
+        let device = &self.render_state.device;
         self.texture_view = Self::create_canvas_view_texture(device, new_dimensions);
 
-        render_state
+        self.render_state
             .renderer
             .write()
             .update_egui_texture_from_wgpu_texture(
@@ -181,20 +185,27 @@ impl CanvasView {
 
     /// Render the canvas view texture using the canvas texture with the camera uniform.
     ///
-    /// Note: Don't call this function directly, call the wrapper function in `CanvasGpu` instead.
+    /// Note: Use the wrapper function instead of using this directly.
     pub(super) fn render(
         &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
         composite_canvas: &mut CompositeCanvas,
-        layers: &mut gpu::Layers,
-        draw_layers_command: DrawLayersCommand,
+        gpu_layers: &mut gpu::Layers,
+        cpu_layers: &[app_state::canvas::layer::Layer],
     ) {
-        composite_canvas.render_if_necessary(device, queue, layers, draw_layers_command);
+        let mut draw_layers_command = DrawLayersCommand(vec![]);
+        for cpu_layer in cpu_layers.iter().rev() {
+            if cpu_layer.enabled {
+                draw_layers_command.0.push(*cpu_layer.id());
+            }
+        }
+        composite_canvas.render_if_necessary(gpu_layers, draw_layers_command);
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("canvas_view_render_encoder"),
-        });
+        let mut encoder =
+            self.render_state
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("canvas_view_render_encoder"),
+                });
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -224,7 +235,7 @@ impl CanvasView {
             render_pass.draw(0..3, 0..1);
         }
 
-        queue.submit(iter::once(encoder.finish()));
+        self.render_state.queue.submit(iter::once(encoder.finish()));
     }
 
     /// Utility function to create a texture for the canvas view.

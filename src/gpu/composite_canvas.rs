@@ -1,11 +1,13 @@
 use crate::gpu::layers::Layers;
 use crate::utils::dimensions::DimensionsPxNonzero;
+use egui_wgpu::RenderState;
 use std::iter;
 use wgpu::PipelineCompilationOptions;
 
 /// The composite canvas is the texture containing the canvas data
 /// with all layers composited together.
 pub struct CompositeCanvas {
+    render_state: RenderState,
     pipeline: wgpu::RenderPipeline,
     texture_view: wgpu::TextureView,
     last_draw_layers_command: Option<DrawLayersCommand>,
@@ -17,10 +19,12 @@ pub struct DrawLayersCommand(pub Vec<i32>);
 
 impl CompositeCanvas {
     pub fn new(
-        device: &wgpu::Device,
+        render_state: RenderState,
         layers: &Layers,
         canvas_dimensions: DimensionsPxNonzero,
     ) -> Self {
+        let device = &render_state.device;
+
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("composite_canvas_texture"),
             size: wgpu::Extent3d {
@@ -74,6 +78,7 @@ impl CompositeCanvas {
         });
 
         Self {
+            render_state,
             pipeline,
             texture_view,
             last_draw_layers_command: None,
@@ -88,8 +93,6 @@ impl CompositeCanvas {
     /// since the last composite canvas render.
     pub fn render_if_necessary(
         &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
         layers: &mut Layers,
         draw_layers_command: DrawLayersCommand,
     ) {
@@ -97,9 +100,12 @@ impl CompositeCanvas {
             return;
         }
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("composite_canvas_render_encoder"),
-        });
+        let mut encoder =
+            self.render_state
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("composite_canvas_render_encoder"),
+                });
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -141,7 +147,7 @@ impl CompositeCanvas {
             }
         }
 
-        queue.submit(iter::once(encoder.finish()));
+        self.render_state.queue.submit(iter::once(encoder.finish()));
         layers.dirty = false;
         self.last_draw_layers_command = Some(draw_layers_command);
     }

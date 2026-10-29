@@ -9,8 +9,8 @@ use std::sync::Arc;
 use app_state::AppState;
 use display::Display;
 use egui::ViewportId;
+use egui_wgpu::WgpuConfiguration;
 use egui_wgpu::winit::Painter;
-use egui_wgpu::{RenderState, WgpuConfiguration};
 use egui_winit::State as EguiWinitState;
 use gpu::CanvasGpu;
 use winit::application::ApplicationHandler;
@@ -22,22 +22,21 @@ use winit::window::{Window, WindowId};
 const WINDOW_TITLE: &str = "SimplePaint";
 
 #[derive(Default)]
-pub struct AppRunner {
+pub struct App {
     /// `None` until `resumed()` fires and we have a window.
-    app: Option<App>,
+    app: Option<AppInner>,
 }
 
-struct App {
+struct AppInner {
     window: Arc<Window>,
     painter: Painter,
     egui_state: EguiWinitState,
-    render_state: RenderState,
     canvas_gpu: CanvasGpu,
     display: Display,
     app_state: AppState,
 }
 
-impl ApplicationHandler for AppRunner {
+impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         // Initialize the window only once.
         if self.app.is_some() {
@@ -92,7 +91,7 @@ impl ApplicationHandler for AppRunner {
         #[allow(clippy::cast_sign_loss)]
         let initial_layer = &app_state.canvas.layers()[0];
         let mut canvas_gpu = CanvasGpu::new(
-            &render_state,
+            render_state,
             app_state.canvas.dimensions(),
             app_state.canvas_view.dimensions,
             *initial_layer.id(),
@@ -102,11 +101,10 @@ impl ApplicationHandler for AppRunner {
         let mut display = Display::new(egui_ctx);
         display.register_canvas_view_texture_id(canvas_gpu.canvas_view().texture_id());
 
-        self.app = Some(App {
+        self.app = Some(AppInner {
             window,
             painter,
             egui_state,
-            render_state,
             canvas_gpu,
             display,
             app_state,
@@ -122,7 +120,7 @@ impl ApplicationHandler for AppRunner {
     }
 }
 
-impl App {
+impl AppInner {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, event: &WindowEvent) {
         match event {
             WindowEvent::RedrawRequested => {
@@ -155,37 +153,23 @@ impl App {
         let egui_ctx = self.egui_state.egui_ctx().clone();
 
         let full_output = egui_ctx.run_ui(raw_input, |ui| {
-            self.display.draw(ui, &mut self.app_state);
+            self.display
+                .draw(ui, &mut self.app_state, &mut self.canvas_gpu);
         });
 
         self.canvas_gpu
             .canvas_view()
-            .update_size(&self.render_state, self.app_state.canvas_view.dimensions);
-        self.canvas_gpu
-            .camera()
-            .update(&self.render_state.queue, &self.app_state);
+            .update_size(self.app_state.canvas_view.dimensions);
+        self.canvas_gpu.camera().update(&self.app_state);
 
-        // Upload the CPU canvas to the GPU if it's changed.
-        let canvas = &mut self.app_state.canvas;
-        let canvas_dimensions = canvas.dimensions();
-        canvas.layers_iter_mut().for_each(|layer| {
-            if layer.dirty {
-                self.canvas_gpu.layers().upload_layer(
-                    &self.render_state.queue,
-                    layer,
-                    canvas_dimensions,
-                );
-                layer.dirty = false;
-            }
-        });
+        self.canvas_gpu
+            .layers()
+            .sync_cpu_canvas_updates(&mut self.app_state);
 
         // Render the canvas texture onto the canvas view texture with the pan/zoom shader
-        // and layer configuration.
-        self.canvas_gpu.render_canvas_view(
-            &self.render_state.device,
-            &self.render_state.queue,
-            self.app_state.canvas.layers(),
-        );
+        // and layer enable/disable configuration.
+        self.canvas_gpu
+            .render_canvas_view(self.app_state.canvas.layers());
 
         // Handle egui platform output (cursor, clipboard, etc.).
         self.egui_state.handle_platform_output_with_event_loop(

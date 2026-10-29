@@ -1,22 +1,29 @@
+use crate::app_state::AppState;
 use crate::app_state::canvas::layer::Layer;
-use crate::gpu::CanvasGpu;
 use crate::utils::dimensions::DimensionsPxNonzero;
+use egui_wgpu::RenderState;
 use std::collections::HashMap;
 
 pub struct Layers {
+    render_state: RenderState,
     sampler: wgpu::Sampler,
     composition_bind_group_layout: wgpu::BindGroupLayout,
     layer_map: HashMap<i32, LayerResources>,
+    // Whether there have been any updates to layer contents. Does not account for layers being
+    // created or deleted, as that's managed by the layer visibility code.
     pub dirty: bool,
 }
 
 pub struct LayerResources {
     pub texture: wgpu::Texture,
+    pub texture_id: egui::TextureId,
     pub composition_bind_group: wgpu::BindGroup,
 }
 
 impl Layers {
-    pub fn new(device: &wgpu::Device) -> Self {
+    pub fn new(render_state: RenderState) -> Self {
+        let device = &render_state.device;
+
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("layer_sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -52,6 +59,7 @@ impl Layers {
             });
 
         Self {
+            render_state,
             sampler,
             composition_bind_group_layout,
             layer_map: HashMap::new(),
@@ -67,28 +75,35 @@ impl Layers {
         &self.layer_map
     }
 
+    /// Upload any changes to the CPU canvas to the GPU, including layer additions and deletions.
+    pub fn sync_cpu_canvas_updates(&mut self, app_state: &mut AppState) {
+        let canvas_dimensions = app_state.canvas.dimensions();
+        app_state.canvas.layers_iter_mut().for_each(|layer| {
+            if layer.dirty {
+                self.upload_layer(layer, canvas_dimensions);
+                layer.dirty = false;
+            }
+        });
+    }
+
     pub fn add_layer(
         &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
         canvas_dimensions: DimensionsPxNonzero,
         layer_id: i32,
         initial_pixels: &[u8],
     ) {
-        let new_layer = self.create_layer_resources(device, canvas_dimensions);
-        CanvasGpu::write_texture(queue, &new_layer.texture, canvas_dimensions, initial_pixels);
+        let new_layer = self.create_layer_resources(canvas_dimensions);
+        self.write_texture(&new_layer.texture, canvas_dimensions, initial_pixels);
 
         self.layer_map.insert(layer_id, new_layer);
-        self.dirty = true;
+    }
+
+    pub fn delete_layer(&mut self, layer_id: i32) {
+        self.layer_map.remove(&layer_id);
     }
 
     /// Upload a layer's full CPU buffer to its raw GPU texture.
-    pub fn upload_layer(
-        &mut self,
-        queue: &wgpu::Queue,
-        cpu_layer: &Layer,
-        canvas_dimensions: DimensionsPxNonzero,
-    ) {
+    fn upload_layer(&mut self, cpu_layer: &Layer, canvas_dimensions: DimensionsPxNonzero) {
         if !self.layer_map.contains_key(cpu_layer.id()) {
             eprintln!(
                 "Error: Tried to upload data to an unregistered layer ({}).",
@@ -101,8 +116,7 @@ impl Layers {
             .get(cpu_layer.id())
             .expect("Should have validated that map contains layer");
 
-        CanvasGpu::write_texture(
-            queue,
+        self.write_texture(
             &gpu_layer.texture,
             canvas_dimensions,
             cpu_layer.buffer_as_bytes(),
@@ -110,11 +124,9 @@ impl Layers {
         self.dirty = true;
     }
 
-    fn create_layer_resources(
-        &self,
-        device: &wgpu::Device,
-        canvas_dimensions: DimensionsPxNonzero,
-    ) -> LayerResources {
+    fn create_layer_resources(&self, canvas_dimensions: DimensionsPxNonzero) -> LayerResources {
+        let device = &self.render_state.device;
+
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("canvas_layer_texture"),
             size: wgpu::Extent3d {
@@ -131,6 +143,12 @@ impl Layers {
         });
 
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let texture_id = self.render_state.renderer.write().register_native_texture(
+            device,
+            &texture_view,
+            wgpu::FilterMode::Nearest,
+        );
 
         let composition_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("layer_composition_bind_group"),
@@ -149,7 +167,34 @@ impl Layers {
 
         LayerResources {
             texture,
+            texture_id,
             composition_bind_group,
         }
+    }
+
+    /// Wrapper function for `queue.write_texture`.
+    fn write_texture(
+        &self,
+        texture: &wgpu::Texture,
+        texture_dimensions: DimensionsPxNonzero,
+        bytes: &[u8],
+    ) {
+        let width = texture_dimensions.width();
+        let height = texture_dimensions.height();
+
+        self.render_state.queue.write_texture(
+            texture.as_image_copy(),
+            bytes,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
     }
 }
