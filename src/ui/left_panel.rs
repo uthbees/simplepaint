@@ -40,6 +40,7 @@ impl LeftPanel {
             });
     }
 
+    #[allow(unused_variables)]
     fn draw_tools(egui_ui: &mut egui::Ui, ui_config: &mut UiConfig) {
         egui_ui.add_space(8.0);
         egui_ui.heading("SimplePaint");
