@@ -1,3 +1,5 @@
+use egui::Ui;
+
 // Sizes here are the sizes on the short side, i.e. the side that doesn't resize with the window.
 pub const SCROLLBAR_TRACK_SIZE_PT: f32 = 10.0;
 const THUMB_SIZE_PT: f32 = 6.0;
@@ -47,7 +49,7 @@ impl Scrollbar {
     #[must_use]
     pub fn draw(
         &mut self,
-        egui_ui: &mut egui::Ui,
+        ui: &mut Ui,
         track_rect: egui::Rect,
         viewport_fraction: f32,
         pan: f32,
@@ -60,10 +62,10 @@ impl Scrollbar {
             (track_length * viewport_fraction).clamp(THUMB_MIN_LENGTH_PT, track_length);
         let max_thumb_offset = track_length - thumb_length;
 
-        let response = egui_ui.allocate_rect(track_rect, egui::Sense::DRAG);
+        let response = ui.allocate_rect(track_rect, egui::Sense::DRAG);
 
         if response.drag_started()
-            && let Some(pointer_pos_2d) = egui_ui.input(|i| i.pointer.interact_pos())
+            && let Some(pointer_pos_2d) = ui.input(|i| i.pointer.interact_pos())
         {
             let pointer_pos = match self.axis {
                 ScrollbarAxis::Vertical => pointer_pos_2d.y,
@@ -84,7 +86,7 @@ impl Scrollbar {
         if response.dragged()
             && let (Some(grab_offset), Some(pointer_pos_2d)) = (
                 self.thumb_grab_offset,
-                egui_ui.input(|i| i.pointer.interact_pos()),
+                ui.input(|i| i.pointer.interact_pos()),
             )
         {
             let thumb_offset = match self.axis {
@@ -109,7 +111,7 @@ impl Scrollbar {
         let thumb_rect = self.build_thumb_rect(track_rect, thumb_offset, thumb_length);
 
         let is_hovered = response.hovered()
-            && egui_ui
+            && ui
                 .input(|i| i.pointer.hover_pos())
                 .is_some_and(|pos| thumb_rect.contains(pos));
         let thumb_color = if self.thumb_grab_offset.is_some() {
@@ -120,10 +122,9 @@ impl Scrollbar {
             THUMB_COLOR
         };
 
-        egui_ui
-            .painter()
+        ui.painter()
             .rect_filled(track_rect, 0.0, SCROLLBAR_TRACK_COLOR);
-        egui_ui.painter().rect_filled(thumb_rect, 3.0, thumb_color);
+        ui.painter().rect_filled(thumb_rect, 3.0, thumb_color);
 
         updated_pan
     }

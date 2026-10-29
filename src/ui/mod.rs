@@ -5,16 +5,17 @@ mod scrollbar;
 pub mod ui_config;
 
 use canvas_panel::CanvasPanel;
+use egui::Ui;
 use left_panel::LeftPanel;
 use right_panel::RightPanel;
 use ui_config::UiConfig;
 
-pub struct Ui {
+pub struct UiManager {
     pub canvas_panel: CanvasPanel,
     pub config: UiConfig,
 }
 
-impl Ui {
+impl UiManager {
     pub fn new(egui_ctx: egui::Context) -> Self {
         Self {
             canvas_panel: CanvasPanel::new(egui_ctx),
@@ -22,9 +23,9 @@ impl Ui {
         }
     }
 
-    pub fn draw(&mut self, egui_ui: &mut egui::Ui) {
-        LeftPanel::draw(egui_ui, &mut self.config);
-        RightPanel::draw(egui_ui, &mut self.config);
-        self.canvas_panel.draw(egui_ui, &self.config);
+    pub fn draw(&mut self, ui: &mut Ui) {
+        LeftPanel::draw(ui, &mut self.config);
+        RightPanel::draw(ui, &mut self.config);
+        self.canvas_panel.draw(ui, &self.config);
     }
 }

@@ -11,7 +11,7 @@ use egui_wgpu::winit::Painter;
 use egui_wgpu::{RenderState, WgpuConfiguration};
 use egui_winit::State as EguiWinitState;
 use gpu::CanvasGpu;
-use ui::Ui;
+use ui::UiManager;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
@@ -32,7 +32,7 @@ struct AppState {
     egui_state: EguiWinitState,
     render_state: RenderState,
     canvas_gpu: CanvasGpu,
-    ui: Ui,
+    ui_manager: UiManager,
 }
 
 impl ApplicationHandler for App {
@@ -81,11 +81,11 @@ impl ApplicationHandler for App {
             .render_state()
             .expect("RenderState should be available after set_window");
 
-        let mut ui = Ui::new(egui_ctx);
+        let mut ui_manager = UiManager::new(egui_ctx);
 
         // Upload the initial canvas to a wgpu texture.
-        let canvas = &ui.canvas_panel.canvas;
-        let canvas_view_dim = &ui.canvas_panel.canvas_view_dimensions();
+        let canvas = &ui_manager.canvas_panel.canvas;
+        let canvas_view_dim = &ui_manager.canvas_panel.canvas_view_dimensions();
         let layers = &canvas.layers;
         // This section will need updating if it becomes possible to start the app with
         // more than one layer.
@@ -98,7 +98,8 @@ impl ApplicationHandler for App {
             layers[0].as_bytes(),
         );
 
-        ui.canvas_panel
+        ui_manager
+            .canvas_panel
             .set_canvas_view_texture_id(canvas_gpu.canvas_view().texture_id());
 
         self.inner = Some(AppState {
@@ -107,7 +108,7 @@ impl ApplicationHandler for App {
             egui_state,
             render_state,
             canvas_gpu,
-            ui,
+            ui_manager,
         });
     }
 
@@ -152,20 +153,20 @@ impl AppState {
         let raw_input = self.egui_state.take_egui_input(&self.window);
         let egui_ctx = self.egui_state.egui_ctx().clone();
 
-        let full_output = egui_ctx.run_ui(raw_input, |egui_ui| {
-            self.ui.draw(egui_ui);
+        let full_output = egui_ctx.run_ui(raw_input, |ui| {
+            self.ui_manager.draw(ui);
         });
 
         self.canvas_gpu.canvas_view().update_size(
             &self.render_state,
-            self.ui.canvas_panel.canvas_view_dimensions(),
+            self.ui_manager.canvas_panel.canvas_view_dimensions(),
         );
         self.canvas_gpu
             .camera()
-            .update(&self.render_state.queue, &self.ui.canvas_panel);
+            .update(&self.render_state.queue, &self.ui_manager.canvas_panel);
 
         // Upload the CPU canvas to the GPU if it's changed.
-        let canvas = &mut self.ui.canvas_panel.canvas;
+        let canvas = &mut self.ui_manager.canvas_panel.canvas;
         let canvas_dimensions = canvas.dimensions();
         canvas.layers.iter_mut().enumerate().for_each(|(i, layer)| {
             if layer.dirty {
@@ -183,7 +184,7 @@ impl AppState {
         self.canvas_gpu.render_canvas_view(
             &self.render_state.device,
             &self.render_state.queue,
-            &mut self.ui.config.enabled_layers,
+            &mut self.ui_manager.config.enabled_layers,
         );
 
         // Handle egui platform output (cursor, clipboard, etc.).

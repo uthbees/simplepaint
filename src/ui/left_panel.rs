@@ -3,7 +3,7 @@ use egui::color_picker::{Alpha, color_picker_hsva_2d, show_color_at};
 use egui::ecolor::Hsva;
 use egui::{
     Color32, Id, Panel, Popup, PopupCloseBehavior, Rect, Rgba, RichText, Sense, SetOpenCommand,
-    StrokeKind,
+    StrokeKind, Ui,
 };
 
 const LARGE_SWATCH_SIZE: f32 = 28.0;
@@ -21,61 +21,59 @@ pub struct LeftPanel {}
 
 impl LeftPanel {
     /// Draws the left-hand side panel containing basic tool/color indicators.
-    pub fn draw(egui_ui: &mut egui::Ui, ui_config: &mut UiConfig) {
+    pub fn draw(ui: &mut Ui, ui_config: &mut UiConfig) {
         Panel::left("left_panel")
             .exact_size(230.0)
             .resizable(false)
-            .show(egui_ui, |egui_ui| {
+            .show(ui, |ui| {
                 Panel::bottom("color_panel")
                     .exact_size(200.0)
                     .resizable(false)
-                    .show(egui_ui, |egui_ui| {
-                        Self::draw_colors(egui_ui, ui_config);
+                    .show(ui, |ui| {
+                        Self::draw_colors(ui, ui_config);
                     });
-                Panel::top("tools_panel")
-                    .resizable(false)
-                    .show(egui_ui, |egui_ui| {
-                        Self::draw_tools(egui_ui, ui_config);
-                    });
+                Panel::top("tools_panel").resizable(false).show(ui, |ui| {
+                    Self::draw_tools(ui, ui_config);
+                });
             });
     }
 
     #[allow(unused_variables)]
-    fn draw_tools(egui_ui: &mut egui::Ui, ui_config: &mut UiConfig) {
-        egui_ui.add_space(8.0);
-        egui_ui.heading("SimplePaint");
-        egui_ui.separator();
+    fn draw_tools(ui: &mut Ui, ui_config: &mut UiConfig) {
+        ui.add_space(8.0);
+        ui.heading("SimplePaint");
+        ui.separator();
 
-        egui_ui.add_space(8.0);
-        egui_ui.label(RichText::new("Tool").strong());
-        egui_ui.label("Paintbrush");
+        ui.add_space(8.0);
+        ui.label(RichText::new("Tool").strong());
+        ui.label("Paintbrush");
     }
 
-    fn draw_colors(egui_ui: &mut egui::Ui, ui_config: &mut UiConfig) {
-        egui_ui.add_space(4.0);
-        Self::draw_fg_bg_colors(egui_ui, ui_config);
+    fn draw_colors(ui: &mut Ui, ui_config: &mut UiConfig) {
+        ui.add_space(4.0);
+        Self::draw_fg_bg_colors(ui, ui_config);
 
-        egui_ui.add_space(8.0);
-        egui_ui.separator();
-        Self::draw_recent_colors(egui_ui, ui_config);
+        ui.add_space(8.0);
+        ui.separator();
+        Self::draw_recent_colors(ui, ui_config);
 
-        egui_ui.add_space(4.0);
-        egui_ui.separator();
-        Self::draw_preset_colors(egui_ui, ui_config);
+        ui.add_space(4.0);
+        ui.separator();
+        Self::draw_preset_colors(ui, ui_config);
     }
 
     /// Draws two overlapping color swatch boxes: foreground (top-left, in front)
     /// and background (bottom-right, behind). Clicking either opens a color picker
     /// popup; releasing the mouse with a color picker open or closing the popup saves
     /// the color to the list of 10 most recently used colors.
-    fn draw_fg_bg_colors(egui_ui: &mut egui::Ui, ui_config: &mut UiConfig) {
+    fn draw_fg_bg_colors(ui: &mut Ui, ui_config: &mut UiConfig) {
         let box_size = egui::vec2(LARGE_SWATCH_SIZE, LARGE_SWATCH_SIZE);
         let total_size = egui::vec2(
             LARGE_SWATCH_SIZE + BACKGROUND_COLOR_SWATCH_OFFSET,
             LARGE_SWATCH_SIZE + BACKGROUND_COLOR_SWATCH_OFFSET,
         );
 
-        let (total_rect, _) = egui_ui.allocate_exact_size(total_size, Sense::hover());
+        let (total_rect, _) = ui.allocate_exact_size(total_size, Sense::hover());
 
         // Background color box - offset to bottom-right.
         let bg_rect = Rect::from_min_size(
@@ -86,26 +84,26 @@ impl LeftPanel {
                 ),
             box_size,
         );
-        let bg_id = egui_ui.make_persistent_id("bg_color_btn");
+        let bg_id = ui.make_persistent_id("bg_color_btn");
 
         // Foreground color box - at top-left origin, overlapping the background box.
         let fg_rect = Rect::from_min_size(total_rect.min, box_size);
-        let fg_id = egui_ui.make_persistent_id("fg_color_btn");
+        let fg_id = ui.make_persistent_id("fg_color_btn");
 
         // Register interaction: background first (lower priority), foreground second
         // (higher priority in the overlap region).
-        let bg_response = egui_ui.interact(bg_rect, bg_id, Sense::click());
-        let fg_response = egui_ui.interact(fg_rect, fg_id, Sense::click());
+        let bg_response = ui.interact(bg_rect, bg_id, Sense::click());
+        let fg_response = ui.interact(fg_rect, fg_id, Sense::click());
 
         // Draw background swatch (behind).
-        Self::draw_large_swatch(egui_ui, bg_rect, ui_config.background_color, &bg_response);
+        Self::draw_large_swatch(ui, bg_rect, ui_config.background_color, &bg_response);
         // Draw foreground swatch (in front).
-        Self::draw_large_swatch(egui_ui, fg_rect, ui_config.foreground_color, &fg_response);
+        Self::draw_large_swatch(ui, fg_rect, ui_config.foreground_color, &fg_response);
 
         // Popup for the foreground color picker.
-        let fg_popup_id = egui_ui.make_persistent_id("fg_color_popup");
+        let fg_popup_id = ui.make_persistent_id("fg_color_popup");
         Self::draw_main_color_picker_popup(
-            egui_ui,
+            ui,
             &fg_response,
             fg_popup_id,
             MainColorPicker::Foreground,
@@ -113,9 +111,9 @@ impl LeftPanel {
         );
 
         // Popup for the background color picker.
-        let bg_popup_id = egui_ui.make_persistent_id("bg_color_popup");
+        let bg_popup_id = ui.make_persistent_id("bg_color_popup");
         Self::draw_main_color_picker_popup(
-            egui_ui,
+            ui,
             &bg_response,
             bg_popup_id,
             MainColorPicker::Background,
@@ -123,20 +121,15 @@ impl LeftPanel {
         );
     }
 
-    fn draw_large_swatch(egui_ui: &egui::Ui, rect: Rect, color: Rgba, response: &egui::Response) {
-        if !egui_ui.is_rect_visible(rect) {
+    fn draw_large_swatch(ui: &Ui, rect: Rect, color: Rgba, response: &egui::Response) {
+        if !ui.is_rect_visible(rect) {
             return;
         }
 
-        let visuals = egui_ui.style().interact(response);
+        let visuals = ui.style().interact(response);
         let draw_rect = rect.expand(visuals.expansion);
-        show_color_at(
-            egui_ui.painter(),
-            Color32::from(color),
-            draw_rect.shrink(1.0),
-        );
-        egui_ui
-            .painter()
+        show_color_at(ui.painter(), Color32::from(color), draw_rect.shrink(1.0));
+        ui.painter()
             .rect_stroke(draw_rect, 2.0, (1.0, visuals.bg_fill), StrokeKind::Inside);
     }
 
@@ -144,7 +137,7 @@ impl LeftPanel {
     /// Saves the chosen color to `recent_colors` whenever mouse is released with the picker open,
     /// or when the popup closes.
     fn draw_main_color_picker_popup(
-        egui_ui: &mut egui::Ui,
+        ui: &mut Ui,
         trigger_response: &egui::Response,
         popup_id: Id,
         color_picker: MainColorPicker,
@@ -156,11 +149,11 @@ impl LeftPanel {
             MainColorPicker::Background => &mut ui_config.background_color,
         };
 
-        let was_open_before = Popup::is_id_open(egui_ui.ctx(), popup_id);
+        let was_open_before = Popup::is_id_open(ui.ctx(), popup_id);
 
         // Use a stable cache id to preserve hue when editing grays.
         let cache_id = popup_id.with("hsva_cache");
-        let mut hsva: Hsva = egui_ui
+        let mut hsva: Hsva = ui
             .data(|d| d.get_temp::<Hsva>(cache_id))
             .unwrap_or_else(|| Hsva::from(*color));
 
@@ -180,26 +173,26 @@ impl LeftPanel {
                 *color = Rgba::from(hsva);
             });
 
-        let is_open_after = Popup::is_id_open(egui_ui.ctx(), popup_id);
+        let is_open_after = Popup::is_id_open(ui.ctx(), popup_id);
 
         // Whenever the mouse is released with the color picker open, or when the popup closes,
         // save the color to the list of 10 most recently used colors.
-        let mouse_released = egui_ui.input(|i| i.pointer.any_released());
+        let mouse_released = ui.input(|i| i.pointer.any_released());
         let color = *color;
         if was_open_before && (mouse_released || !is_open_after) {
             ui_config.push_recent_color(color);
         }
 
         // Persist the hsva so hue is stable across frames.
-        egui_ui.data_mut(|d| d.insert_temp(cache_id, hsva));
+        ui.data_mut(|d| d.insert_temp(cache_id, hsva));
     }
 
-    fn draw_recent_colors(egui_ui: &mut egui::Ui, ui_config: &mut UiConfig) {
-        egui_ui.add_space(4.0);
-        egui_ui.label(RichText::new("Recent").strong());
+    fn draw_recent_colors(ui: &mut Ui, ui_config: &mut UiConfig) {
+        ui.add_space(4.0);
+        ui.label(RichText::new("Recent").strong());
 
         Self::draw_small_swatch_row(
-            egui_ui,
+            ui,
             ui_config.get_recent_colors(),
             |_, response, (_, color)| {
                 if response.clicked() {
@@ -214,18 +207,18 @@ impl LeftPanel {
         );
     }
 
-    fn draw_preset_colors(egui_ui: &mut egui::Ui, ui_config: &mut UiConfig) {
-        egui_ui.add_space(4.0);
-        egui_ui.label(RichText::new("Presets").strong());
+    fn draw_preset_colors(ui: &mut Ui, ui_config: &mut UiConfig) {
+        ui.add_space(4.0);
+        ui.label(RichText::new("Presets").strong());
 
         let palette_colors = ui_config.palette_colors;
         Self::draw_small_swatch_row(
-            egui_ui,
+            ui,
             palette_colors.iter().map(|&color| Some(color)),
-            |egui_ui, response, (index, color)| {
-                let popup_id = egui_ui.make_persistent_id(("preset_edit", index));
+            |ui, response, (index, color)| {
+                let popup_id = ui.make_persistent_id(("preset_edit", index));
                 if response.double_clicked() {
-                    Popup::open_id(egui_ui.ctx(), popup_id);
+                    Popup::open_id(ui.ctx(), popup_id);
                 } else if response.secondary_clicked() {
                     ui_config.background_color = color;
                     ui_config.push_recent_color(color);
@@ -234,10 +227,10 @@ impl LeftPanel {
                     ui_config.push_recent_color(color);
                 }
 
-                let open = Popup::is_id_open(egui_ui.ctx(), popup_id);
+                let open = Popup::is_id_open(ui.ctx(), popup_id);
                 if open {
                     let cache_id = popup_id.with("preset_hsva");
-                    let mut hsva: Hsva = egui_ui
+                    let mut hsva: Hsva = ui
                         .data(|d| d.get_temp::<Hsva>(cache_id))
                         .unwrap_or_else(|| Hsva::from(color));
 
@@ -251,9 +244,9 @@ impl LeftPanel {
                             ui_config.palette_colors[index] = Rgba::from(hsva);
                         });
 
-                    egui_ui.data_mut(|d| d.insert_temp(cache_id, hsva));
+                    ui.data_mut(|d| d.insert_temp(cache_id, hsva));
 
-                    if egui_ui.input(|i| i.pointer.any_released()) {
+                    if ui.input(|i| i.pointer.any_released()) {
                         ui_config.foreground_color = color;
                         ui_config.push_recent_color(color);
                     }
@@ -266,24 +259,22 @@ impl LeftPanel {
     }
 
     fn draw_small_swatch_row<ColorsIter>(
-        egui_ui: &mut egui::Ui,
+        ui: &mut Ui,
         colors: ColorsIter,
-        mut on_draw_swatch: impl FnMut(&mut egui::Ui, egui::Response, (usize, Rgba)),
+        mut on_draw_swatch: impl FnMut(&mut Ui, egui::Response, (usize, Rgba)),
     ) where
         ColorsIter: IntoIterator<Item = Option<Rgba>>,
     {
         let swatch_size = egui::vec2(SMALL_SWATCH_SIZE, SMALL_SWATCH_SIZE);
-        egui_ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
+        ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
 
-        egui_ui.horizontal_wrapped(|egui_ui| {
+        ui.horizontal_wrapped(|ui| {
             for (index, color) in colors.into_iter().enumerate() {
                 if let Some(color) = color {
-                    let (rect, response) = egui_ui.allocate_exact_size(swatch_size, Sense::click());
-                    if egui_ui.is_rect_visible(rect) {
-                        egui_ui
-                            .painter()
-                            .rect_filled(rect, 2.0, Color32::from(color));
-                        egui_ui.painter().rect_stroke(
+                    let (rect, response) = ui.allocate_exact_size(swatch_size, Sense::click());
+                    if ui.is_rect_visible(rect) {
+                        ui.painter().rect_filled(rect, 2.0, Color32::from(color));
+                        ui.painter().rect_stroke(
                             rect,
                             2.0,
                             egui::Stroke::new(
@@ -298,11 +289,11 @@ impl LeftPanel {
                         );
                     }
 
-                    on_draw_swatch(egui_ui, response, (index, color));
+                    on_draw_swatch(ui, response, (index, color));
                 } else {
-                    let (rect, _) = egui_ui.allocate_exact_size(swatch_size, Sense::hover());
-                    if egui_ui.is_rect_visible(rect) {
-                        egui_ui.painter().rect_stroke(
+                    let (rect, _) = ui.allocate_exact_size(swatch_size, Sense::hover());
+                    if ui.is_rect_visible(rect) {
+                        ui.painter().rect_stroke(
                             rect,
                             2.0,
                             egui::Stroke::new(1.0, Color32::from_gray(60)),

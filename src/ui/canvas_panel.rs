@@ -5,7 +5,7 @@ use crate::ui::scrollbar::{
     SCROLLBAR_TRACK_COLOR, SCROLLBAR_TRACK_SIZE_PT, Scrollbar, ScrollbarAxis,
 };
 use crate::ui::ui_config::UiConfig;
-use egui::{CentralPanel, Vec2};
+use egui::{CentralPanel, Ui, Vec2};
 
 const DEFAULT_CANVAS_HEIGHT: u32 = 500;
 const DEFAULT_CANVAS_WIDTH: u32 = 500;
@@ -61,10 +61,10 @@ impl CanvasPanel {
         (self.canvas_view_dimensions_pts * self.egui_ctx.pixels_per_point()).into()
     }
 
-    pub fn draw(&mut self, egui_ui: &mut egui::Ui, ui_config: &UiConfig) {
-        CentralPanel::default().show(egui_ui, |egui_ui| {
-            egui_ui.spacing_mut().item_spacing = Vec2::ZERO;
-            let panel_rect = egui_ui.available_rect_before_wrap();
+    pub fn draw(&mut self, ui: &mut Ui, ui_config: &UiConfig) {
+        CentralPanel::default().show(ui, |ui| {
+            ui.spacing_mut().item_spacing = Vec2::ZERO;
+            let panel_rect = ui.available_rect_before_wrap();
 
             let canvas_size = egui::vec2(
                 (panel_rect.width() - SCROLLBAR_TRACK_SIZE_PT).max(1.0),
@@ -72,27 +72,27 @@ impl CanvasPanel {
             );
 
             let (canvas_view_rect, response) =
-                egui_ui.allocate_exact_size(canvas_size, egui::Sense::DRAG);
+                ui.allocate_exact_size(canvas_size, egui::Sense::DRAG);
             self.canvas_view_dimensions_pts = canvas_view_rect;
 
             if let Some(canvas_view_texture_id) = self.canvas_view_texture_id {
-                egui_ui.painter().image(
+                ui.painter().image(
                     canvas_view_texture_id,
                     canvas_view_rect,
                     egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                     egui::Color32::WHITE,
                 );
             }
-            self.handle_canvas_view_input(egui_ui, ui_config, &response);
+            self.handle_canvas_view_input(ui, ui_config, &response);
 
-            self.draw_scrollbars(egui_ui, panel_rect, canvas_view_rect);
+            self.draw_scrollbars(ui, panel_rect, canvas_view_rect);
         });
     }
 
     #[allow(clippy::similar_names)]
     fn draw_scrollbars(
         &mut self,
-        egui_ui: &mut egui::Ui,
+        ui: &mut Ui,
         panel_rect: egui::Rect,
         canvas_view_rect: egui::Rect,
     ) {
@@ -121,13 +121,13 @@ impl CanvasPanel {
             canvas_y_viewport_fraction / (canvas_y_viewport_fraction + 1.0);
 
         let updated_horizontal_pan = self.scrollbars.horizontal.draw(
-            egui_ui,
+            ui,
             horizontal_track,
             full_x_viewport_fraction,
             -self.pan_px.x / canvas_dim.width() as f32 + 0.5,
         );
         let updated_vertical_pan = self.scrollbars.vertical.draw(
-            egui_ui,
+            ui,
             vertical_track,
             full_y_viewport_fraction,
             -self.pan_px.y / canvas_dim.height() as f32 + 0.5,
@@ -146,44 +146,42 @@ impl CanvasPanel {
             self.clamp_pan();
         }
 
-        egui_ui
-            .painter()
-            .rect_filled(corner, 0.0, SCROLLBAR_TRACK_COLOR);
+        ui.painter().rect_filled(corner, 0.0, SCROLLBAR_TRACK_COLOR);
     }
 
     fn handle_canvas_view_input(
         &mut self,
-        egui_ui: &mut egui::Ui,
+        ui: &mut Ui,
         ui_config: &UiConfig,
         response: &egui::Response,
     ) {
         if response.hovered() {
-            self.handle_scrolled(egui_ui, response);
+            self.handle_scrolled(ui, response);
         }
 
         if response.drag_stopped() {
             self.last_drag_pos = None;
         } else if response.dragged() {
-            self.handle_dragged(egui_ui, ui_config, response);
+            self.handle_dragged(ui, ui_config, response);
         }
     }
 
-    fn handle_scrolled(&mut self, egui_ui: &egui::Ui, response: &egui::Response) {
-        let scroll_delta = egui_ui.input(egui::InputState::translation_delta);
+    fn handle_scrolled(&mut self, ui: &Ui, response: &egui::Response) {
+        let scroll_delta = ui.input(egui::InputState::translation_delta);
         if scroll_delta != Vec2::ZERO {
             let pan_delta = scroll_delta / self.zoom;
             self.pan_px += pan_delta;
             self.clamp_pan();
         }
 
-        let zoom_delta = egui_ui.input(egui::InputState::zoom_delta);
+        let zoom_delta = ui.input(egui::InputState::zoom_delta);
         #[allow(clippy::float_cmp)]
         if zoom_delta != 1.0 {
             let old_zoom = self.zoom;
             let new_zoom = (self.zoom * zoom_delta).clamp(0.1, 10.0);
 
             let px_per_pt = self.egui_ctx.pixels_per_point();
-            let cursor_pos_px = (egui_ui
+            let cursor_pos_px = (ui
                 .input(|i| i.pointer.hover_pos())
                 .unwrap_or_else(|| response.rect.center())
                 - response.rect.min)
@@ -205,11 +203,11 @@ impl CanvasPanel {
 
     fn handle_dragged(
         &mut self,
-        egui_ui: &mut egui::Ui,
+        ui: &mut Ui,
         ui_config: &UiConfig,
         canvas_response: &egui::Response,
     ) {
-        if let Some(cursor_pos) = egui_ui.input(|i| i.pointer.interact_pos()) {
+        if let Some(cursor_pos) = ui.input(|i| i.pointer.interact_pos()) {
             let rect = canvas_response.rect;
 
             let relative_pos = cursor_pos - rect.min;
