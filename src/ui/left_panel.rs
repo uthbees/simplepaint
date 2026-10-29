@@ -20,13 +20,8 @@ enum MainColorPicker {
 pub struct LeftPanel {}
 
 impl LeftPanel {
-    pub fn new() -> Self {
-        LeftPanel {}
-    }
-
-    #[allow(clippy::unused_self)]
     /// Draws the left-hand side panel containing basic tool/color indicators.
-    pub fn draw(&mut self, egui_ui: &mut egui::Ui, ui_config: &mut UiConfig) {
+    pub fn draw(egui_ui: &mut egui::Ui, ui_config: &mut UiConfig) {
         Panel::left("left_panel")
             .exact_size(250.0)
             .resizable(false)
