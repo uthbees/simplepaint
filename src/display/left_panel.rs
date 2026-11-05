@@ -201,7 +201,7 @@ impl LeftPanel {
                     app_state.background_color = color;
                 }
                 response.on_hover_text(
-                    "Left click to set as foreground, right click to set as background.",
+                    "Left click to set as foreground, right click to set as background",
                 );
             },
         );
@@ -252,7 +252,7 @@ impl LeftPanel {
                     }
                 }
 
-                let tooltip = "Left click to set as foreground, right click to set as background, double click to edit.";
+                let tooltip = "Left click to set as foreground, right click to set as background, double click to edit";
                 response.on_hover_text(tooltip);
             },
         );

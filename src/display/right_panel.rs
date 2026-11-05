@@ -2,7 +2,10 @@ use crate::app_state::AppState;
 use crate::app_state::canvas::layer::Layer;
 use crate::gpu::CanvasGpu;
 use crate::gpu::layers::LayerResources;
-use egui::{Layout, Panel, ScrollArea, Sense, Ui, UiBuilder, Vec2};
+use egui::{
+    Align, Atom, Button, FontId, IdSalt, Layout, Margin, Panel, RichText, ScrollArea, Sense, Ui,
+    UiBuilder, Vec2,
+};
 use egui_dnd::{DragAxis, dnd};
 use egui_material_icons::icons;
 
@@ -23,25 +26,19 @@ impl RightPanel {
             .exact_size(275.0)
             .resizable(false)
             .show(ui, |ui| {
-                self.draw_layer_controls(ui, app_state, canvas_gpu);
+                Self::draw_layer_panel_header(ui, app_state, canvas_gpu);
+                Self::draw_layer_buttons_panel(ui);
+                self.draw_layer_widgets(ui, app_state, canvas_gpu);
             });
     }
 
-    fn draw_layer_controls(
-        &mut self,
-        ui: &mut Ui,
-        app_state: &mut AppState,
-        canvas_gpu: &mut CanvasGpu,
-    ) {
+    fn draw_layer_panel_header(ui: &mut Ui, app_state: &mut AppState, canvas_gpu: &mut CanvasGpu) {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.heading("Layers");
-            ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui
-                    .add_sized(
-                        [60.0, 25.0],
-                        egui::Button::new(("New Layer", icons::ICON_ADD)),
-                    )
+                    .add_sized([60.0, 25.0], Button::new(("New Layer", icons::ICON_ADD)))
                     .clicked()
                 {
                     app_state.canvas.add_layer(canvas_gpu);
@@ -49,7 +46,113 @@ impl RightPanel {
             });
         });
         ui.separator();
+    }
 
+    fn draw_layer_buttons_panel(ui: &mut Ui) {
+        Panel::bottom("layer_buttons_panel")
+            .frame(
+                egui::Frame::side_top_panel(ui.style()).inner_margin(Margin {
+                    left: 0,
+                    right: 0,
+                    top: 6,
+                    bottom: 4,
+                }),
+            )
+            .show(ui, |ui| {
+                ui.spacing_mut().button_padding = Vec2 { x: 8.0, y: 2.0 };
+                ui.columns(6, |columns| {
+                    columns[0].vertical_centered(|ui| {
+                        // TODO: disable when none selected
+                        let response = ui.add_enabled(
+                            true,
+                            Button::new(RichText::new(icons::ICON_CONTENT_COPY).size(20.0)),
+                        );
+
+                        if response.clicked() {
+                            todo!()
+                        }
+                        response.on_hover_text("Duplicate selected layer");
+                    });
+                    columns[1].vertical_centered(|ui| {
+                        // TODO: disable when none selected or none above
+                        let response = ui.add_enabled(
+                            true,
+                            Button::new(RichText::new(icons::ICON_MERGE).size(20.0)),
+                        );
+
+                        if response.clicked() {
+                            todo!()
+                        }
+                        response.on_hover_text("Merge selected layer into layer above");
+                    });
+                    columns[2].vertical_centered(|ui| {
+                        ui.style_mut().visuals.override_text_color =
+                            Some(egui::Color32::TRANSPARENT);
+
+                        // TODO: disable when none selected or none below
+                        let response = ui.add_enabled(
+                            true,
+                            Button::new(RichText::new(icons::ICON_MERGE).size(20.0)),
+                        );
+
+                        Self::draw_upside_down_merge_icon(
+                            ui,
+                            response.rect,
+                            FontId::proportional(20.0),
+                            ui.style().interact(&response).text_color(),
+                        );
+
+                        if response.clicked() {
+                            todo!()
+                        }
+                        response.on_hover_text("Merge selected layer into layer below");
+                    });
+                    columns[3].vertical_centered(|ui| {
+                        // TODO: disable when none selected or none above
+                        let response = ui.add_enabled(
+                            true,
+                            Button::new(RichText::new(icons::ICON_NORTH).size(20.0)),
+                        );
+
+                        if response.clicked() {
+                            todo!()
+                        }
+                        response.on_hover_text("Move selected layer up");
+                    });
+                    columns[4].vertical_centered(|ui| {
+                        // TODO: disable when none selected or none below
+                        let response = ui.add_enabled(
+                            true,
+                            Button::new(RichText::new(icons::ICON_SOUTH).size(20.0)),
+                        );
+
+                        if response.clicked() {
+                            todo!()
+                        }
+                        response.on_hover_text("Move selected layer down");
+                    });
+                    columns[5].vertical_centered(|ui| {
+                        // TODO: disable when none selected
+                        let response = ui.add_enabled(
+                            true,
+                            Button::new(RichText::new(icons::ICON_DRIVE_FILE_RENAME).size(20.0)),
+                        );
+
+                        if response.clicked() {
+                            todo!()
+                        }
+                        response.on_hover_text("Rename selected layer");
+                    });
+                });
+            });
+    }
+
+    fn draw_layer_widgets(
+        &mut self,
+        ui: &mut Ui,
+        app_state: &mut AppState,
+        canvas_gpu: &mut CanvasGpu,
+    ) {
         ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
             let mut layers_to_delete = vec![];
             let gpu_layer_map = canvas_gpu.layers().layer_map();
@@ -73,7 +176,7 @@ impl RightPanel {
                                 let layer_selected = prev_selected_layer_id
                                     .is_some_and(|selected_id| selected_id == layer_id);
 
-                                let results = self.draw_single_layer_controls(
+                                let results = self.draw_single_layer_widget(
                                     ui,
                                     layer,
                                     layer_selected,
@@ -112,7 +215,7 @@ impl RightPanel {
         });
     }
 
-    fn draw_single_layer_controls(
+    fn draw_single_layer_widget(
         &mut self,
         ui: &mut Ui,
         layer: &mut Layer,
@@ -147,7 +250,7 @@ impl RightPanel {
                             );
                         }
 
-                        ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             ui.spacing_mut().button_padding = Vec2 { x: 3.0, y: 0.0 };
                             ui.spacing_mut().item_spacing = Vec2 { x: 5.0, y: 5.0 };
                             let delete_response = ui.button(icons::ICON_DELETE);
@@ -169,11 +272,14 @@ impl RightPanel {
                                 results.interactable_hovered = true;
                             }
 
-                            ui.with_layout(Layout::left_to_right(egui::Align::Center), |ui| {
+                            eye_response.on_hover_text("Show/hide layer");
+                            delete_response.on_hover_text("Delete layer");
+
+                            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                                 if self.is_editing_selected_layer_name && layer_selected {
                                     let response = ui.add(
                                         egui::TextEdit::singleline(&mut layer.name)
-                                            .margin(egui::Margin::symmetric(4, 4)),
+                                            .margin(Margin::symmetric(4, 4)),
                                     );
                                     if response.lost_focus() {
                                         self.is_editing_selected_layer_name = false;
@@ -185,11 +291,11 @@ impl RightPanel {
                                     }
                                 } else {
                                     let response = egui::Frame::new()
-                                        .inner_margin(egui::Margin::symmetric(0, 4))
+                                        .inner_margin(Margin::symmetric(0, 4))
                                         .show(ui, |ui| {
                                             ui.add(
                                                 egui::Label::new(
-                                                    egui::RichText::new(&layer.name)
+                                                    RichText::new(&layer.name)
                                                         .color(egui::Color32::WHITE),
                                                 )
                                                 .truncate(),
@@ -212,11 +318,107 @@ impl RightPanel {
             })
             .response;
 
+        response.container_context_menu(|ui| {
+            self.draw_layer_widget_context_menu(ui);
+        });
+
         if response.clicked() {
             results.selected = true;
         }
 
         results
+    }
+
+    fn draw_layer_widget_context_menu(&self, ui: &mut Ui) {
+        if ui.button((icons::ICON_CONTENT_COPY, "Duplicate")).clicked() {
+            todo!();
+            ui.close();
+        }
+
+        // TODO: disable if nothing above
+        if ui
+            .add_enabled(true, Button::new((icons::ICON_MERGE, "Merge up")))
+            .clicked()
+        {
+            todo!();
+            ui.close();
+        }
+
+        let font_id = FontId::proportional(egui::TextStyle::Button.resolve(ui.style()).size);
+        let merge_down_icon_galley = ui.painter().layout_no_wrap(
+            icons::ICON_MERGE.codepoint.into(),
+            font_id.clone(),
+            egui::Color32::TRANSPARENT,
+        );
+        let merge_down_icon_id = IdSalt::new("merge_down_icon_id");
+        let merge_down_atom = Atom::custom(merge_down_icon_id, merge_down_icon_galley.size());
+
+        // TODO: disable when nothing below
+        let response = ui
+            .add_enabled_ui(true, |ui| {
+                Button::new((merge_down_atom, "Merge down")).atom_ui(ui)
+            })
+            .inner;
+        if let Some(rect) = response.rect(merge_down_icon_id) {
+            Self::draw_upside_down_merge_icon(
+                ui,
+                rect,
+                font_id,
+                ui.style().interact(&response).text_color(),
+            );
+        }
+
+        if response.clicked() {
+            todo!();
+            ui.close();
+        }
+
+        ui.separator();
+
+        // TODO: disable when nothing above
+        if ui
+            .add_enabled(true, Button::new((icons::ICON_NORTH, "Move up")))
+            .clicked()
+        {
+            todo!();
+            ui.close();
+        }
+
+        // TODO: disable when nothing below
+        if ui
+            .add_enabled(true, Button::new((icons::ICON_SOUTH, "Move down")))
+            .clicked()
+        {
+            todo!();
+            ui.close();
+        }
+
+        if ui
+            .button((icons::ICON_DRIVE_FILE_RENAME, "Rename"))
+            .clicked()
+        {
+            todo!();
+            ui.close();
+        }
+    }
+
+    /// Draws `ICON_MERGE` upside down (because there is no merge down material icon).
+    fn draw_upside_down_merge_icon(
+        ui: &Ui,
+        rect: egui::Rect,
+        font_id: FontId,
+        color: egui::Color32,
+    ) {
+        if ui.is_rect_visible(rect) {
+            let galley =
+                ui.painter()
+                    .layout_no_wrap(icons::ICON_MERGE.codepoint.into(), font_id, color);
+
+            let pos = rect.center() + galley.size() * 0.5 + egui::vec2(0.0, 1.0);
+            ui.painter().add(
+                egui::epaint::TextShape::new(pos, galley, color).with_angle(std::f32::consts::PI),
+            );
+        }
     }
 }
 
