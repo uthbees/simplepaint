@@ -3,8 +3,8 @@ use crate::app_state::canvas::layer::Layer;
 use crate::gpu::CanvasGpu;
 use crate::gpu::layers::LayerResources;
 use egui::{
-    Align, Atom, Button, FontId, IdSalt, Layout, Margin, Panel, RichText, ScrollArea, Sense, Ui,
-    UiBuilder, Vec2,
+    Align, Atom, Button, FontId, IdSalt, Layout, Margin, Panel, Response, RichText, ScrollArea,
+    Sense, Ui, UiBuilder, Vec2,
 };
 use egui_dnd::{DragAxis, dnd};
 use egui_material_icons::icons;
@@ -27,7 +27,7 @@ impl RightPanel {
             .resizable(false)
             .show(ui, |ui| {
                 Self::draw_layer_panel_header(ui, app_state, canvas_gpu);
-                Self::draw_layer_buttons_panel(ui);
+                Self::draw_layer_buttons_panel(ui, app_state);
                 self.draw_layer_widgets(ui, app_state, canvas_gpu);
             });
     }
@@ -48,7 +48,13 @@ impl RightPanel {
         ui.separator();
     }
 
-    fn draw_layer_buttons_panel(ui: &mut Ui) {
+    fn draw_layer_buttons_panel(ui: &mut Ui, app_state: &AppState) {
+        let selected_layer = app_state.canvas.get_selected_layer_with_idx();
+        let layer_count = app_state.canvas.layers().len();
+        let top_layer_selected = selected_layer.is_some_and(|(index, _)| index == 0);
+        let bottom_layer_selected =
+            selected_layer.is_some_and(|(index, _)| index == layer_count - 1);
+
         Panel::bottom("layer_buttons_panel")
             .frame(
                 egui::Frame::side_top_panel(ui.style()).inner_margin(Margin {
@@ -62,9 +68,8 @@ impl RightPanel {
                 ui.spacing_mut().button_padding = Vec2 { x: 8.0, y: 2.0 };
                 ui.columns(6, |columns| {
                     columns[0].vertical_centered(|ui| {
-                        // TODO: disable when none selected
                         let response = ui.add_enabled(
-                            true,
+                            selected_layer.is_some(),
                             Button::new(RichText::new(icons::ICON_CONTENT_COPY).size(20.0)),
                         );
 
@@ -74,9 +79,8 @@ impl RightPanel {
                         response.on_hover_text("Duplicate selected layer");
                     });
                     columns[1].vertical_centered(|ui| {
-                        // TODO: disable when none selected or none above
                         let response = ui.add_enabled(
-                            true,
+                            selected_layer.is_some() && !top_layer_selected,
                             Button::new(RichText::new(icons::ICON_MERGE).size(20.0)),
                         );
 
@@ -89,17 +93,16 @@ impl RightPanel {
                         ui.style_mut().visuals.override_text_color =
                             Some(egui::Color32::TRANSPARENT);
 
-                        // TODO: disable when none selected or none below
                         let response = ui.add_enabled(
-                            true,
+                            selected_layer.is_some() && !bottom_layer_selected,
                             Button::new(RichText::new(icons::ICON_MERGE).size(20.0)),
                         );
 
                         Self::draw_upside_down_merge_icon(
                             ui,
                             response.rect,
+                            &response,
                             FontId::proportional(20.0),
-                            ui.style().interact(&response).text_color(),
                         );
 
                         if response.clicked() {
@@ -108,9 +111,8 @@ impl RightPanel {
                         response.on_hover_text("Merge selected layer into layer below");
                     });
                     columns[3].vertical_centered(|ui| {
-                        // TODO: disable when none selected or none above
                         let response = ui.add_enabled(
-                            true,
+                            selected_layer.is_some() && !top_layer_selected,
                             Button::new(RichText::new(icons::ICON_NORTH).size(20.0)),
                         );
 
@@ -120,9 +122,8 @@ impl RightPanel {
                         response.on_hover_text("Move selected layer up");
                     });
                     columns[4].vertical_centered(|ui| {
-                        // TODO: disable when none selected or none below
                         let response = ui.add_enabled(
-                            true,
+                            selected_layer.is_some() && !bottom_layer_selected,
                             Button::new(RichText::new(icons::ICON_SOUTH).size(20.0)),
                         );
 
@@ -132,9 +133,8 @@ impl RightPanel {
                         response.on_hover_text("Move selected layer down");
                     });
                     columns[5].vertical_centered(|ui| {
-                        // TODO: disable when none selected
                         let response = ui.add_enabled(
-                            true,
+                            selected_layer.is_some(),
                             Button::new(RichText::new(icons::ICON_DRIVE_FILE_RENAME).size(20.0)),
                         );
 
@@ -154,12 +154,13 @@ impl RightPanel {
         canvas_gpu: &mut CanvasGpu,
     ) {
         ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+            let layer_count = app_state.canvas.layers().len();
             let mut layers_to_delete = vec![];
             let gpu_layer_map = canvas_gpu.layers().layer_map();
             let prev_selected_layer_id = app_state
                 .canvas
-                .get_selected_layer()
-                .map(|layer| *layer.id());
+                .get_selected_layer_with_idx()
+                .map(|(_, layer)| *layer.id());
             let mut new_selected_layer_id = prev_selected_layer_id;
             let mut interactable_hovered = false;
 
@@ -167,8 +168,8 @@ impl RightPanel {
                 .with_drag_axis(DragAxis::Vertical)
                 .with_return_animation_time(0.0)
                 .show(
-                    app_state.canvas.layers_iter_mut(),
-                    |ui, layer, handle, _| {
+                    app_state.canvas.layers_iter_mut().enumerate(),
+                    |ui, (layer_index, layer), handle, _| {
                         ui.vertical(|ui| {
                             handle.ui(ui, |ui| {
                                 let layer_id = *layer.id();
@@ -179,7 +180,11 @@ impl RightPanel {
                                 let results = self.draw_single_layer_widget(
                                     ui,
                                     layer,
-                                    layer_selected,
+                                    &LayerMetadata {
+                                        is_top_layer: layer_index == 0,
+                                        is_bottom_layer: layer_index == layer_count - 1,
+                                        is_selected: layer_selected,
+                                    },
                                     layer_resources,
                                 );
 
@@ -219,8 +224,8 @@ impl RightPanel {
         &mut self,
         ui: &mut Ui,
         layer: &mut Layer,
-        layer_selected: bool,
-        layer_resources: Option<&LayerResources>,
+        layer_metadata: &LayerMetadata,
+        layer_gpu_resources: Option<&LayerResources>,
     ) -> DrawLayerResults {
         let mut results = DrawLayerResults {
             selected: false,
@@ -229,7 +234,7 @@ impl RightPanel {
         };
 
         let mut frame = egui::Frame::group(ui.style()).corner_radius(4.0);
-        if layer_selected {
+        if layer_metadata.is_selected {
             frame = frame.fill(ui.visuals().selection.bg_fill);
         }
 
@@ -237,9 +242,9 @@ impl RightPanel {
             .scope_builder(UiBuilder::new().sense(Sense::click()), |ui| {
                 frame.show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        if let Some(layer_resources) = layer_resources {
+                        if let Some(layer_gpu_resources) = layer_gpu_resources {
                             ui.add(egui::Image::new(egui::load::SizedTexture::new(
-                                layer_resources.texture_id,
+                                layer_gpu_resources.texture_id,
                                 egui::vec2(24.0, 24.0),
                             )));
                         } else {
@@ -276,7 +281,8 @@ impl RightPanel {
                             delete_response.on_hover_text("Delete layer");
 
                             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                                if self.is_editing_selected_layer_name && layer_selected {
+                                if self.is_editing_selected_layer_name && layer_metadata.is_selected
+                                {
                                     let response = ui.add(
                                         egui::TextEdit::singleline(&mut layer.name)
                                             .margin(Margin::symmetric(4, 4)),
@@ -319,7 +325,7 @@ impl RightPanel {
             .response;
 
         response.container_context_menu(|ui| {
-            self.draw_layer_widget_context_menu(ui);
+            self.draw_layer_widget_context_menu(ui, layer_metadata);
         });
 
         if response.clicked() {
@@ -329,15 +335,17 @@ impl RightPanel {
         results
     }
 
-    fn draw_layer_widget_context_menu(&self, ui: &mut Ui) {
+    fn draw_layer_widget_context_menu(&self, ui: &mut Ui, layer_metadata: &LayerMetadata) {
         if ui.button((icons::ICON_CONTENT_COPY, "Duplicate")).clicked() {
             todo!();
             ui.close();
         }
 
-        // TODO: disable if nothing above
         if ui
-            .add_enabled(true, Button::new((icons::ICON_MERGE, "Merge up")))
+            .add_enabled(
+                !layer_metadata.is_top_layer,
+                Button::new((icons::ICON_MERGE, "Merge up")),
+            )
             .clicked()
         {
             todo!();
@@ -353,19 +361,13 @@ impl RightPanel {
         let merge_down_icon_id = IdSalt::new("merge_down_icon_id");
         let merge_down_atom = Atom::custom(merge_down_icon_id, merge_down_icon_galley.size());
 
-        // TODO: disable when nothing below
         let response = ui
-            .add_enabled_ui(true, |ui| {
+            .add_enabled_ui(!layer_metadata.is_bottom_layer, |ui| {
                 Button::new((merge_down_atom, "Merge down")).atom_ui(ui)
             })
             .inner;
         if let Some(rect) = response.rect(merge_down_icon_id) {
-            Self::draw_upside_down_merge_icon(
-                ui,
-                rect,
-                font_id,
-                ui.style().interact(&response).text_color(),
-            );
+            Self::draw_upside_down_merge_icon(ui, rect, &*response, font_id);
         }
 
         if response.clicked() {
@@ -375,18 +377,22 @@ impl RightPanel {
 
         ui.separator();
 
-        // TODO: disable when nothing above
         if ui
-            .add_enabled(true, Button::new((icons::ICON_NORTH, "Move up")))
+            .add_enabled(
+                !layer_metadata.is_top_layer,
+                Button::new((icons::ICON_NORTH, "Move up")),
+            )
             .clicked()
         {
             todo!();
             ui.close();
         }
 
-        // TODO: disable when nothing below
         if ui
-            .add_enabled(true, Button::new((icons::ICON_SOUTH, "Move down")))
+            .add_enabled(
+                !layer_metadata.is_bottom_layer,
+                Button::new((icons::ICON_SOUTH, "Move down")),
+            )
             .clicked()
         {
             todo!();
@@ -406,20 +412,36 @@ impl RightPanel {
     fn draw_upside_down_merge_icon(
         ui: &Ui,
         rect: egui::Rect,
+        response: &Response,
         font_id: FontId,
-        color: egui::Color32,
     ) {
         if ui.is_rect_visible(rect) {
-            let galley =
-                ui.painter()
-                    .layout_no_wrap(icons::ICON_MERGE.codepoint.into(), font_id, color);
+            let text_color = if response.enabled() {
+                ui.style().interact(&response).text_color()
+            } else {
+                ui.visuals()
+                    .disable(ui.style().interact(&response).text_color())
+            };
+
+            let galley = ui.painter().layout_no_wrap(
+                icons::ICON_MERGE.codepoint.into(),
+                font_id,
+                text_color,
+            );
 
             let pos = rect.center() + galley.size() * 0.5 + egui::vec2(0.0, 1.0);
             ui.painter().add(
-                egui::epaint::TextShape::new(pos, galley, color).with_angle(std::f32::consts::PI),
+                egui::epaint::TextShape::new(pos, galley, text_color)
+                    .with_angle(std::f32::consts::PI),
             );
         }
     }
+}
+
+struct LayerMetadata {
+    is_top_layer: bool,
+    is_bottom_layer: bool,
+    is_selected: bool,
 }
 
 struct DrawLayerResults {

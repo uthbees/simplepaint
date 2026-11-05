@@ -41,7 +41,16 @@ impl Canvas {
         self.layers.iter_mut()
     }
 
-    pub fn get_selected_layer(&mut self) -> Option<&mut Layer> {
+    pub fn get_selected_layer_with_idx(&self) -> Option<(usize, &Layer)> {
+        self.selected_layer_id.and_then(|selected_layer_id| {
+            self.layers
+                .iter()
+                .enumerate()
+                .find(|(_, layer)| *layer.id() == selected_layer_id)
+        })
+    }
+
+    pub fn get_selected_layer_mut(&mut self) -> Option<&mut Layer> {
         self.selected_layer_id.and_then(|selected_layer_id| {
             self.layers
                 .iter_mut()
@@ -113,7 +122,7 @@ impl Canvas {
     /// Draws a line from `pos1` to `pos2` with the specified thickness and color.
     #[allow(clippy::cast_sign_loss)]
     pub fn draw_line(&mut self, pos1: CanvasPos, pos2: CanvasPos, thickness: f32, raw_color: Rgba) {
-        let Some(selected_layer) = self.get_selected_layer() else {
+        let Some(selected_layer) = self.get_selected_layer_mut() else {
             return;
         };
 
