@@ -2,8 +2,9 @@ use crate::app_state::AppState;
 use crate::app_state::canvas::layer::Layer;
 use crate::gpu::CanvasGpu;
 use crate::gpu::layers::LayerResources;
-use egui::{Layout, Panel, ScrollArea, Sense, Ui, UiBuilder};
+use egui::{Layout, Panel, ScrollArea, Sense, Ui, UiBuilder, Vec2};
 use egui_dnd::{DragAxis, dnd};
+use egui_material_icons::icons;
 
 pub struct RightPanel {
     is_editing_selected_layer_name: bool,
@@ -54,6 +55,7 @@ impl RightPanel {
                 .get_selected_layer()
                 .map(|layer| *layer.id());
             let mut new_selected_layer_id = prev_selected_layer_id;
+            let mut interactable_hovered = false;
 
             let response = dnd(ui, ui.make_persistent_id("layer_controls_dnd"))
                 .with_drag_axis(DragAxis::Vertical)
@@ -68,14 +70,22 @@ impl RightPanel {
                                 let layer_selected = prev_selected_layer_id
                                     .is_some_and(|selected_id| selected_id == layer_id);
 
-                                self.draw_single_layer_controls(
+                                let results = self.draw_single_layer_controls(
                                     ui,
                                     layer,
                                     layer_selected,
                                     layer_resources,
-                                    || new_selected_layer_id = Some(layer_id),
-                                    || layers_to_delete.push(layer_id),
                                 );
+
+                                if results.selected {
+                                    new_selected_layer_id = Some(layer_id);
+                                }
+                                if results.delete_clicked {
+                                    layers_to_delete.push(layer_id);
+                                }
+                                if results.interactable_hovered {
+                                    interactable_hovered = true;
+                                }
                             });
                         });
                     },
@@ -91,6 +101,11 @@ impl RightPanel {
             for layer_id in layers_to_delete {
                 app_state.canvas.delete_layer(layer_id, canvas_gpu);
             }
+            // We have to set the cursor icon out here so that we override the cursor set by egui_dnd
+            // instead of the other way around.
+            if interactable_hovered {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Default);
+            }
         });
     }
 
@@ -100,9 +115,13 @@ impl RightPanel {
         layer: &mut Layer,
         layer_selected: bool,
         layer_resources: Option<&LayerResources>,
-        mut select_layer: impl FnMut(),
-        delete_layer: impl FnOnce(),
-    ) {
+    ) -> DrawLayerResults {
+        let mut results = DrawLayerResults {
+            selected: false,
+            delete_clicked: false,
+            interactable_hovered: false,
+        };
+
         let mut frame = egui::Frame::group(ui.style()).corner_radius(4.0);
         if layer_selected {
             frame = frame.fill(ui.visuals().selection.bg_fill);
@@ -118,7 +137,7 @@ impl RightPanel {
                                 egui::vec2(24.0, 24.0),
                             )));
                         } else {
-                            ui.allocate_exact_size(egui::Vec2::splat(24.0), Sense::hover());
+                            ui.allocate_exact_size(Vec2::splat(24.0), Sense::hover());
                             eprintln!(
                                 "Failed to get resources for layer {} thumbnail.",
                                 layer.id()
@@ -126,33 +145,61 @@ impl RightPanel {
                         }
 
                         ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("d").clicked() {
-                                delete_layer();
+                            ui.spacing_mut().button_padding = Vec2 { x: 3.0, y: 0.0 };
+                            ui.spacing_mut().item_spacing = Vec2 { x: 5.0, y: 5.0 };
+                            let delete_response = ui.button(icons::ICON_DELETE);
+                            if delete_response.clicked() {
+                                results.delete_clicked = true;
                             }
 
-                            let eye_icon = if layer.enabled { "h" } else { "s" };
-                            if ui.button(eye_icon).clicked() {
+                            let eye_icon = if layer.enabled {
+                                icons::ICON_VISIBILITY
+                            } else {
+                                icons::ICON_VISIBILITY_OFF
+                            };
+                            let eye_response = ui.button(eye_icon);
+                            if eye_response.clicked() {
                                 layer.enabled = !layer.enabled;
+                            }
+
+                            if delete_response.hovered() || eye_response.hovered() {
+                                results.interactable_hovered = true;
                             }
 
                             ui.with_layout(Layout::left_to_right(egui::Align::Center), |ui| {
                                 if self.is_editing_selected_layer_name && layer_selected {
-                                    let response =
-                                        ui.add(egui::TextEdit::singleline(&mut layer.name));
+                                    let response = ui.add(
+                                        egui::TextEdit::singleline(&mut layer.name)
+                                            .margin(egui::Margin::symmetric(4, 4)),
+                                    );
                                     if response.lost_focus() {
                                         self.is_editing_selected_layer_name = false;
                                     } else {
                                         response.request_focus();
                                     }
+                                    if response.hovered() {
+                                        results.interactable_hovered = true;
+                                    }
                                 } else {
-                                    let label_response = ui.add(
-                                        egui::Label::new(&layer.name)
-                                            .truncate()
-                                            .sense(Sense::click()),
-                                    );
+                                    let response = egui::Frame::new()
+                                        .inner_margin(egui::Margin::symmetric(0, 4))
+                                        .show(ui, |ui| {
+                                            ui.add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(&layer.name)
+                                                        .color(egui::Color32::WHITE),
+                                                )
+                                                .truncate(),
+                                            );
+                                        })
+                                        .response;
+                                    let response = response.interact(Sense::click());
 
-                                    if label_response.double_clicked() {
+                                    if response.double_clicked() {
                                         self.is_editing_selected_layer_name = true;
+                                    }
+                                    if response.hovered() {
+                                        results.interactable_hovered = true;
                                     }
                                 }
                             });
@@ -163,7 +210,15 @@ impl RightPanel {
             .response;
 
         if response.clicked() {
-            select_layer();
+            results.selected = true;
         }
+
+        results
     }
+}
+
+struct DrawLayerResults {
+    selected: bool,
+    delete_clicked: bool,
+    interactable_hovered: bool,
 }

@@ -59,6 +59,7 @@ impl ApplicationHandler for App {
         // Build egui context and winit state.
         let viewport_id = ViewportId::ROOT;
         let egui_ctx = egui::Context::default();
+        egui_material_icons::initialize(&egui_ctx);
         let egui_state = EguiWinitState::new(
             egui_ctx.clone(),
             viewport_id,
