@@ -7,10 +7,12 @@ pub struct DimensionsPx {
 }
 
 impl DimensionsPx {
+    #[must_use]
     pub fn new(width: u32, height: u32) -> Self {
         Self { width, height }
     }
 
+    #[must_use]
     pub fn to_nonzero(self) -> DimensionsPxNonzero {
         DimensionsPxNonzero {
             width: self.width.max(1),
@@ -45,6 +47,7 @@ pub struct DimensionsPxNonzero {
 }
 
 impl DimensionsPxNonzero {
+    #[must_use]
     pub fn new(width: u32, height: u32) -> Self {
         Self {
             width: width.max(1),
@@ -52,10 +55,12 @@ impl DimensionsPxNonzero {
         }
     }
 
+    #[must_use]
     pub fn width(self) -> u32 {
         self.width
     }
 
+    #[must_use]
     pub fn height(self) -> u32 {
         self.height
     }
@@ -68,6 +73,7 @@ impl DimensionsPxNonzero {
         self.height = height.max(1);
     }
 
+    #[must_use]
     pub fn to_unconstrained(self) -> DimensionsPx {
         DimensionsPx {
             width: self.width,
