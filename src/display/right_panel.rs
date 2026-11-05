@@ -38,7 +38,10 @@ impl RightPanel {
             ui.heading("Layers");
             ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
-                    .add_sized([60.0, 25.0], egui::Button::new("New Layer +"))
+                    .add_sized(
+                        [60.0, 25.0],
+                        egui::Button::new(("New Layer", icons::ICON_ADD)),
+                    )
                     .clicked()
                 {
                     app_state.canvas.add_layer(canvas_gpu);
