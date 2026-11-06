@@ -1,7 +1,7 @@
 use crate::utils::dimensions::DimensionsPxNonzero;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use tiny_skia::{Color, Pixmap, PixmapMut, PixmapPaint, Transform};
+use tiny_skia::{Color, Pixmap};
 
 /// Side length of every square tile, in pixels.
 pub const TILE_SIZE: u32 = 256;
@@ -107,45 +107,6 @@ impl Layer {
     pub fn clear_dirty(&mut self) {
         self.dirty = false;
         self.dirty_tiles.clear();
-    }
-
-    /// Converts canvas pixel coordinates to a `(TileCoord, local_x, local_y)` tuple.
-    ///
-    /// Uses Euclidean (floor) division so negative world coordinates map correctly.
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
-    pub fn world_to_tile(world_x: i32, world_y: i32) -> (TileCoord, u32, u32) {
-        let ts = TILE_SIZE.cast_signed();
-        let tile_x = world_x.div_euclid(ts);
-        let tile_y = world_y.div_euclid(ts);
-        let local_x = world_x.rem_euclid(ts) as u32;
-        let local_y = world_y.rem_euclid(ts) as u32;
-        (
-            TileCoord {
-                x: tile_x,
-                y: tile_y,
-            },
-            local_x,
-            local_y,
-        )
-    }
-
-    /// Composites all allocated tiles onto `dest` using alpha-blending.
-    ///
-    /// Each tile is drawn at its world-space offset.  Missing tiles are skipped.
-    pub fn composite_onto(&self, dest: &mut PixmapMut<'_>) {
-        for (coord, tile) in &self.tiles {
-            let dx = coord.x as f32 * TILE_SIZE as f32;
-            let dy = coord.y as f32 * TILE_SIZE as f32;
-
-            dest.draw_pixmap(
-                0,
-                0,
-                tile.as_ref(),
-                &PixmapPaint::default(),
-                Transform::from_translate(dx, dy),
-                None,
-            );
-        }
     }
 
     /// Exports the entire layer as a flat premultiplied-RGBA byte buffer sized to
