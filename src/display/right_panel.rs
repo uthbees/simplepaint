@@ -1,4 +1,5 @@
 use crate::app_state::AppState;
+use crate::app_state::canvas::MoveLayerDirection;
 use crate::app_state::canvas::layer::Layer;
 use crate::gpu::CanvasGpu;
 use crate::gpu::layers::LayerResources;
@@ -27,7 +28,7 @@ impl RightPanel {
             .resizable(false)
             .show(ui, |ui| {
                 Self::draw_layer_panel_header(ui, app_state, canvas_gpu);
-                Self::draw_layer_buttons_panel(ui, app_state);
+                self.draw_layer_buttons_panel(ui, app_state, canvas_gpu);
                 self.draw_layer_widgets(ui, app_state, canvas_gpu);
             });
     }
@@ -48,12 +49,19 @@ impl RightPanel {
         ui.separator();
     }
 
-    fn draw_layer_buttons_panel(ui: &mut Ui, app_state: &AppState) {
-        let selected_layer = app_state.canvas.get_selected_layer_with_idx();
+    fn draw_layer_buttons_panel(
+        &mut self,
+        ui: &mut Ui,
+        app_state: &mut AppState,
+        canvas_gpu: &mut CanvasGpu,
+    ) {
+        let selected_layer = app_state.canvas.selected_layer_with_idx();
         let layer_count = app_state.canvas.layers().len();
         let top_layer_selected = selected_layer.is_some_and(|(index, _)| index == 0);
         let bottom_layer_selected =
             selected_layer.is_some_and(|(index, _)| index == layer_count - 1);
+
+        let mut command: Option<LayerContextMenuCommand> = None;
 
         Panel::bottom("layer_buttons_panel")
             .frame(
@@ -74,7 +82,7 @@ impl RightPanel {
                         );
 
                         if response.clicked() {
-                            todo!()
+                            command = Some(LayerContextMenuCommand::Duplicate);
                         }
                         response.on_hover_text("Duplicate selected layer");
                     });
@@ -85,7 +93,7 @@ impl RightPanel {
                         );
 
                         if response.clicked() {
-                            todo!()
+                            command = Some(LayerContextMenuCommand::MergeUp);
                         }
                         response.on_hover_text("Merge selected layer into layer above");
                     });
@@ -106,7 +114,7 @@ impl RightPanel {
                         );
 
                         if response.clicked() {
-                            todo!()
+                            command = Some(LayerContextMenuCommand::MergeDown);
                         }
                         response.on_hover_text("Merge selected layer into layer below");
                     });
@@ -117,7 +125,7 @@ impl RightPanel {
                         );
 
                         if response.clicked() {
-                            todo!()
+                            command = Some(LayerContextMenuCommand::MoveUp);
                         }
                         response.on_hover_text("Move selected layer up");
                     });
@@ -128,7 +136,7 @@ impl RightPanel {
                         );
 
                         if response.clicked() {
-                            todo!()
+                            command = Some(LayerContextMenuCommand::MoveDown);
                         }
                         response.on_hover_text("Move selected layer down");
                     });
@@ -139,12 +147,26 @@ impl RightPanel {
                         );
 
                         if response.clicked() {
-                            todo!()
+                            command = Some(LayerContextMenuCommand::Rename);
                         }
                         response.on_hover_text("Rename selected layer");
                     });
                 });
             });
+
+        if let Some(command) = command {
+            let selected_layer_id = selected_layer
+                .expect("All buttons should be disabled if no layer is selected")
+                .1
+                .id();
+
+            self.handle_layer_widget_context_menu_command(
+                app_state,
+                canvas_gpu,
+                &command,
+                *selected_layer_id,
+            );
+        }
     }
 
     fn draw_layer_widgets(
@@ -153,16 +175,18 @@ impl RightPanel {
         app_state: &mut AppState,
         canvas_gpu: &mut CanvasGpu,
     ) {
+        let layer_count = app_state.canvas.layers().len();
+        let prev_selected_layer_id = app_state
+            .canvas
+            .selected_layer_with_idx()
+            .map(|(_, layer)| *layer.id());
+
         ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-            let layer_count = app_state.canvas.layers().len();
-            let mut layers_to_delete = vec![];
             let gpu_layer_map = canvas_gpu.layers().layer_map();
-            let prev_selected_layer_id = app_state
-                .canvas
-                .get_selected_layer_with_idx()
-                .map(|(_, layer)| *layer.id());
+            let mut layers_to_delete = vec![];
             let mut new_selected_layer_id = prev_selected_layer_id;
             let mut interactable_hovered = false;
+            let mut context_menu_command: Option<(LayerContextMenuCommand, i32)> = None;
 
             let response = dnd(ui, ui.make_persistent_id("layer_controls_dnd"))
                 .with_drag_axis(DragAxis::Vertical)
@@ -177,7 +201,7 @@ impl RightPanel {
                                 let layer_selected = prev_selected_layer_id
                                     .is_some_and(|selected_id| selected_id == layer_id);
 
-                                let results = self.draw_single_layer_widget(
+                                let result = self.draw_single_layer_widget(
                                     ui,
                                     layer,
                                     &LayerMetadata {
@@ -188,14 +212,17 @@ impl RightPanel {
                                     layer_resources,
                                 );
 
-                                if results.selected {
+                                if result.selected {
                                     new_selected_layer_id = Some(layer_id);
                                 }
-                                if results.delete_clicked {
+                                if result.delete_clicked {
                                     layers_to_delete.push(layer_id);
                                 }
-                                if results.interactable_hovered {
+                                if result.interactable_hovered {
                                     interactable_hovered = true;
+                                }
+                                if let Some(command) = result.context_menu_command {
+                                    context_menu_command = Some((command, layer_id));
                                 }
                             });
                         });
@@ -209,6 +236,13 @@ impl RightPanel {
             if let Some(selected_layer_id) = new_selected_layer_id {
                 app_state.canvas.set_selected_layer(selected_layer_id);
             }
+
+            if let Some((command, layer_id)) = context_menu_command {
+                self.handle_layer_widget_context_menu_command(
+                    app_state, canvas_gpu, &command, layer_id,
+                );
+            }
+
             for layer_id in layers_to_delete {
                 app_state.canvas.delete_layer(layer_id, canvas_gpu);
             }
@@ -226,11 +260,12 @@ impl RightPanel {
         layer: &mut Layer,
         layer_metadata: &LayerMetadata,
         layer_gpu_resources: Option<&LayerResources>,
-    ) -> DrawLayerResults {
-        let mut results = DrawLayerResults {
+    ) -> DrawLayerResult {
+        let mut result = DrawLayerResult {
             selected: false,
             delete_clicked: false,
             interactable_hovered: false,
+            context_menu_command: None,
         };
 
         let mut frame = egui::Frame::group(ui.style()).corner_radius(4.0);
@@ -260,7 +295,7 @@ impl RightPanel {
                             ui.spacing_mut().item_spacing = Vec2 { x: 5.0, y: 5.0 };
                             let delete_response = ui.button(icons::ICON_DELETE);
                             if delete_response.clicked() {
-                                results.delete_clicked = true;
+                                result.delete_clicked = true;
                             }
 
                             let eye_icon = if layer.enabled {
@@ -274,7 +309,7 @@ impl RightPanel {
                             }
 
                             if delete_response.hovered() || eye_response.hovered() {
-                                results.interactable_hovered = true;
+                                result.interactable_hovered = true;
                             }
 
                             eye_response.on_hover_text("Show/hide layer");
@@ -293,7 +328,7 @@ impl RightPanel {
                                         response.request_focus();
                                     }
                                     if response.hovered() {
-                                        results.interactable_hovered = true;
+                                        result.interactable_hovered = true;
                                     }
                                 } else {
                                     let response = egui::Frame::new()
@@ -314,7 +349,7 @@ impl RightPanel {
                                         self.is_editing_selected_layer_name = true;
                                     }
                                     if response.hovered() {
-                                        results.interactable_hovered = true;
+                                        result.interactable_hovered = true;
                                     }
                                 }
                             });
@@ -325,20 +360,24 @@ impl RightPanel {
             .response;
 
         response.container_context_menu(|ui| {
-            self.draw_layer_widget_context_menu(ui, layer_metadata);
+            result.context_menu_command = Self::draw_layer_widget_context_menu(ui, layer_metadata);
         });
 
         if response.clicked() {
-            results.selected = true;
+            result.selected = true;
         }
 
-        results
+        result
     }
 
-    fn draw_layer_widget_context_menu(&self, ui: &mut Ui, layer_metadata: &LayerMetadata) {
+    fn draw_layer_widget_context_menu(
+        ui: &mut Ui,
+        layer_metadata: &LayerMetadata,
+    ) -> Option<LayerContextMenuCommand> {
+        let mut result = None;
+
         if ui.button((icons::ICON_CONTENT_COPY, "Duplicate")).clicked() {
-            todo!();
-            ui.close();
+            result = Some(LayerContextMenuCommand::Duplicate);
         }
 
         if ui
@@ -348,8 +387,7 @@ impl RightPanel {
             )
             .clicked()
         {
-            todo!();
-            ui.close();
+            result = Some(LayerContextMenuCommand::MergeUp);
         }
 
         let font_id = FontId::proportional(egui::TextStyle::Button.resolve(ui.style()).size);
@@ -367,12 +405,11 @@ impl RightPanel {
             })
             .inner;
         if let Some(rect) = response.rect(merge_down_icon_id) {
-            Self::draw_upside_down_merge_icon(ui, rect, &*response, font_id);
+            Self::draw_upside_down_merge_icon(ui, rect, &response, font_id);
         }
 
         if response.clicked() {
-            todo!();
-            ui.close();
+            result = Some(LayerContextMenuCommand::MergeDown);
         }
 
         ui.separator();
@@ -384,8 +421,7 @@ impl RightPanel {
             )
             .clicked()
         {
-            todo!();
-            ui.close();
+            result = Some(LayerContextMenuCommand::MoveUp);
         }
 
         if ui
@@ -395,16 +431,49 @@ impl RightPanel {
             )
             .clicked()
         {
-            todo!();
-            ui.close();
+            result = Some(LayerContextMenuCommand::MoveDown);
         }
 
         if ui
             .button((icons::ICON_DRIVE_FILE_RENAME, "Rename"))
             .clicked()
         {
-            todo!();
-            ui.close();
+            result = Some(LayerContextMenuCommand::Rename);
+        }
+
+        result
+    }
+
+    fn handle_layer_widget_context_menu_command(
+        &mut self,
+        app_state: &mut AppState,
+        canvas_gpu: &mut CanvasGpu,
+        command: &LayerContextMenuCommand,
+        layer_id: i32,
+    ) {
+        let canvas = &mut app_state.canvas;
+
+        let result: Result<(), String> = match command {
+            LayerContextMenuCommand::Duplicate => canvas.duplicate_layer(canvas_gpu, layer_id),
+            LayerContextMenuCommand::MergeUp => {
+                canvas.merge_layer_to_adjacent(layer_id, &MoveLayerDirection::Up)
+            }
+            LayerContextMenuCommand::MergeDown => {
+                canvas.merge_layer_to_adjacent(layer_id, &MoveLayerDirection::Down)
+            }
+            LayerContextMenuCommand::MoveUp => canvas.move_layer(layer_id, &MoveLayerDirection::Up),
+            LayerContextMenuCommand::MoveDown => {
+                canvas.move_layer(layer_id, &MoveLayerDirection::Down)
+            }
+            LayerContextMenuCommand::Rename => {
+                canvas.set_selected_layer(layer_id);
+                self.is_editing_selected_layer_name = true;
+                Ok(())
+            }
+        };
+
+        if let Err(error) = result {
+            eprintln!("Failed to execute command: {error}");
         }
     }
 
@@ -417,10 +486,10 @@ impl RightPanel {
     ) {
         if ui.is_rect_visible(rect) {
             let text_color = if response.enabled() {
-                ui.style().interact(&response).text_color()
+                ui.style().interact(response).text_color()
             } else {
                 ui.visuals()
-                    .disable(ui.style().interact(&response).text_color())
+                    .disable(ui.style().interact(response).text_color())
             };
 
             let galley = ui.painter().layout_no_wrap(
@@ -444,8 +513,18 @@ struct LayerMetadata {
     is_selected: bool,
 }
 
-struct DrawLayerResults {
+struct DrawLayerResult {
     selected: bool,
     delete_clicked: bool,
     interactable_hovered: bool,
+    context_menu_command: Option<LayerContextMenuCommand>,
+}
+
+enum LayerContextMenuCommand {
+    Duplicate,
+    MergeUp,
+    MergeDown,
+    MoveUp,
+    MoveDown,
+    Rename,
 }

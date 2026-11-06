@@ -6,7 +6,7 @@ use tiny_skia::{Color, Pixmap};
 #[derive(Debug)]
 pub struct Layer {
     /// Row-major layout: pixel `(x, y)` is at index `y * width + x`.
-    pub pixmap: Pixmap,
+    pub(super) pixmap: Pixmap,
     /// Whether the buffer has been modified since the last GPU upload.
     pub dirty: bool,
 
@@ -16,24 +16,36 @@ pub struct Layer {
 }
 
 impl Layer {
-    /// Creates a new layer filled with a solid background, either transparent or white.
-    pub fn new(dimensions: DimensionsPxNonzero, name: String, id: i32, fill_white: bool) -> Self {
-        let mut buffer = Self {
-            pixmap: Pixmap::new(dimensions.width(), dimensions.height())
-                .expect("Pixmap row size should fit in an i32 and width/height should not be zero"),
+    pub fn new(
+        dimensions: DimensionsPxNonzero,
+        name: String,
+        id: i32,
+        initial_color: &InitialColor,
+    ) -> Self {
+        let mut pixmap = Pixmap::new(dimensions.width(), dimensions.height())
+            .expect("Pixmap row size should fit in an i32 and width/height should not be zero");
+        pixmap.fill(match initial_color {
+            InitialColor::White => Color::WHITE,
+            InitialColor::Transparent => Color::TRANSPARENT,
+        });
+
+        Self {
+            pixmap,
             dirty: false,
             id,
             name,
             enabled: true,
-        };
-        let fill_color = if fill_white {
-            Color::WHITE
-        } else {
-            Color::TRANSPARENT
-        };
+        }
+    }
 
-        buffer.pixmap.fill(fill_color);
-        buffer
+    pub fn new_from_pixmap(name: String, id: i32, pixmap: Pixmap) -> Self {
+        Self {
+            pixmap,
+            dirty: false,
+            id,
+            name,
+            enabled: true,
+        }
     }
 
     pub fn id(&self) -> &i32 {
@@ -52,4 +64,9 @@ impl Hash for Layer {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
     }
+}
+
+pub enum InitialColor {
+    White,
+    Transparent,
 }
