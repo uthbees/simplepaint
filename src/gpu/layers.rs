@@ -132,8 +132,8 @@ impl Layers {
             // Check if the tile is within the canvas boundary.
             if tile_origin_x >= canvas_w
                 || tile_origin_y >= canvas_h
-                || tile_origin_x + tile_size < 0
-                || tile_origin_y + tile_size < 0
+                || tile_origin_x + tile_size - 1 < 0
+                || tile_origin_y + tile_size - 1 < 0
             {
                 continue;
             }

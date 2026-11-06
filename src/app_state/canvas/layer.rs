@@ -86,17 +86,28 @@ impl Layer {
         &self.tiles
     }
 
-    /// Returns a mutable reference to the tile at `coord`, creating a new tile filled with the
-    /// layer's `default_color` if one does not already exist. Marks the tile and layer as dirty.
-    pub fn get_tile_mut(&mut self, coord: TileCoord) -> &mut Pixmap {
+    /// Returns a mutable reference to the tile at `coord` if `coord` is at least partially in the
+    /// canvas, creating a new tile filled with the layer's `default_color` if one does not already
+    /// exist. Marks the tile and layer as dirty unless returning None.
+    pub fn get_tile_mut(&mut self, coord: TileCoord) -> Option<&mut Pixmap> {
+        let origin_x = coord.x * TILE_SIZE.cast_signed();
+        let origin_y = coord.x * TILE_SIZE.cast_signed();
+        if origin_x >= self.dimensions.width().cast_signed()
+            || origin_y >= self.dimensions.height().cast_signed()
+            || origin_x + TILE_SIZE.cast_signed() - 1 < 0
+            || origin_y + TILE_SIZE.cast_signed() - 1 < 0
+        {
+            return None;
+        }
+
         self.dirty = true;
         self.dirty_tiles.insert(coord);
-        self.tiles.entry(coord).or_insert_with(|| {
+        Some(self.tiles.entry(coord).or_insert_with(|| {
             let mut pm = Pixmap::new(TILE_SIZE, TILE_SIZE)
                 .expect("Tile pixmap creation should succeed for TILE_SIZE > 0");
             pm.fill(self.default_color);
             pm
-        })
+        }))
     }
 
     pub fn dirty_tiles(&self) -> &HashSet<TileCoord> {

@@ -242,15 +242,16 @@ impl Canvas {
         // For every tile in the merged layer, draw it onto the corresponding tile
         // in the kept layer (creating it if needed).
         for (coord, merged_tile) in merged_layer.tiles() {
-            let dest_tile = kept_layer.get_tile_mut(*coord);
-            dest_tile.as_mut().draw_pixmap(
-                0,
-                0,
-                merged_tile.as_ref(),
-                &PixmapPaint::default(),
-                Transform::identity(),
-                None,
-            );
+            if let Some(dest_tile) = kept_layer.get_tile_mut(*coord) {
+                dest_tile.as_mut().draw_pixmap(
+                    0,
+                    0,
+                    merged_tile.as_ref(),
+                    &PixmapPaint::default(),
+                    Transform::identity(),
+                    None,
+                );
+            }
         }
         kept_layer.dirty = true;
 
@@ -351,10 +352,12 @@ impl Canvas {
         // Rasterize the stroke onto each affected tile individually.
         for tile_y in tile_min_y..=tile_max_y {
             for tile_x in tile_min_x..=tile_max_x {
-                let tile = selected_layer.get_tile_mut(TileCoord {
+                let Some(tile) = selected_layer.get_tile_mut(TileCoord {
                     x: tile_x,
                     y: tile_y,
-                });
+                }) else {
+                    continue;
+                };
 
                 // Translate from canvas coordinates to tile coordinates: the tile's world origin is
                 // (tx * TILE_SIZE, ty * TILE_SIZE), so we shift the path by the negative of that.
