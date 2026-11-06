@@ -1,10 +1,10 @@
 use crate::app_state::canvas::canvas_pos::CanvasPos;
-use crate::app_state::canvas::layer::InitialColor;
+use crate::app_state::canvas::layer::{Layer, TILE_SIZE, TileCoord};
 use crate::gpu::CanvasGpu;
 use crate::utils::dimensions::DimensionsPxNonzero;
 use egui::Rgba;
 use egui_dnd::DragDropResponse;
-use layer::Layer;
+use std::collections::HashMap;
 use std::slice::IterMut;
 use tiny_skia::{
     Color, LineCap, LineJoin, Paint, PathBuilder, Pixmap, PixmapPaint, Stroke, Transform,
@@ -32,7 +32,7 @@ impl Canvas {
                 dimensions,
                 "Background".to_owned(),
                 0,
-                &InitialColor::White,
+                Color::WHITE,
             )],
             next_layer_id: 1,
             selected_layer_id: Some(0),
@@ -81,7 +81,7 @@ impl Canvas {
     pub fn add_layer(&mut self, canvas_gpu: &mut CanvasGpu) {
         self.add_layer_specified(
             canvas_gpu,
-            LayerInitialBuffer::SolidColor(InitialColor::Transparent),
+            LayerInitialPixels::SolidColor(Color::TRANSPARENT),
             0,
             true,
         );
@@ -96,9 +96,16 @@ impl Canvas {
             .get_layer_with_idx(layer_id)
             .ok_or_else(|| format!("No layer with id {layer_id}"))?;
 
+        // Clone all tiles from the existing layer.
+        let cloned_tiles: HashMap<TileCoord, Pixmap> = existing_layer
+            .tiles()
+            .iter()
+            .map(|(coord, pixmap)| (*coord, pixmap.clone()))
+            .collect();
+
         self.add_layer_specified(
             canvas_gpu,
-            LayerInitialBuffer::Pixmap(existing_layer.pixmap.clone()),
+            LayerInitialPixels::Tiles(cloned_tiles, existing_layer.default_color()),
             existing_index,
             existing_layer.enabled,
         );
@@ -106,12 +113,10 @@ impl Canvas {
     }
 
     /// Adds a layer with specifiable properties.
-    ///
-    /// If using `LayerInitialBuffer::Pixmap`, the pixmap dimensions must be identical to self.dimensions.
     fn add_layer_specified(
         &mut self,
         canvas_gpu: &mut CanvasGpu,
-        layer_initial_buffer: LayerInitialBuffer,
+        layer_initial_pixels: LayerInitialPixels,
         insert_idx: usize,
         enabled: bool,
     ) {
@@ -122,15 +127,17 @@ impl Canvas {
         };
 
         let name = format!("Layer {}", self.next_layer_id);
-        let mut new_layer = match layer_initial_buffer {
-            LayerInitialBuffer::SolidColor(color) => {
-                Layer::new(self.dimensions, name, self.next_layer_id, &color)
+        let mut new_layer = match layer_initial_pixels {
+            LayerInitialPixels::SolidColor(color) => {
+                Layer::new(self.dimensions, name, self.next_layer_id, color)
             }
-            LayerInitialBuffer::Pixmap(pixmap) => {
-                assert_eq!(self.dimensions.width(), pixmap.width());
-                assert_eq!(self.dimensions.height(), pixmap.height());
-                Layer::new_from_pixmap(name, self.next_layer_id, pixmap)
-            }
+            LayerInitialPixels::Tiles(tiles, uninitialized_color) => Layer::new_from_tiles(
+                self.dimensions,
+                name,
+                self.next_layer_id,
+                tiles,
+                uninitialized_color,
+            ),
         };
         new_layer.enabled = enabled;
         self.next_layer_id += 1;
@@ -140,7 +147,7 @@ impl Canvas {
         canvas_gpu.layers().add_layer(
             self.dimensions,
             *new_layer.id(),
-            new_layer.buffer_as_bytes(),
+            &new_layer.buffer_as_bytes(),
         );
         self.layers.insert(insert_idx_checked, new_layer);
     }
@@ -232,14 +239,19 @@ impl Canvas {
             .get_mut(new_kept_layer_idx)
             .expect("Function should be called with valid index");
 
-        kept_layer.pixmap.as_mut().draw_pixmap(
-            0,
-            0,
-            merged_layer.pixmap.as_ref(),
-            &PixmapPaint::default(),
-            Transform::identity(),
-            None,
-        );
+        // For every tile in the merged layer, draw it onto the corresponding tile
+        // in the kept layer (creating it if needed).
+        for (coord, merged_tile) in merged_layer.tiles() {
+            let dest_tile = kept_layer.get_tile_mut(*coord);
+            dest_tile.as_mut().draw_pixmap(
+                0,
+                0,
+                merged_tile.as_ref(),
+                &PixmapPaint::default(),
+                Transform::identity(),
+                None,
+            );
+        }
         kept_layer.dirty = true;
 
         let kept_layer_id = *kept_layer.id();
@@ -283,7 +295,10 @@ impl Canvas {
     }
 
     /// Draws a line from `pos1` to `pos2` with the specified thickness and color.
-    #[allow(clippy::cast_sign_loss)]
+    ///
+    /// The stroke is run with offset on each tile in the bounding box defined by `pos1` and `pos2`
+    /// so that only tiles that are modified or nearby are marked as dirty.
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
     pub fn draw_line(&mut self, pos1: CanvasPos, pos2: CanvasPos, thickness: f32, raw_color: Rgba) {
         let Some(selected_layer) = self.selected_layer_mut() else {
             return;
@@ -320,10 +335,36 @@ impl Canvas {
         paint.set_color(converted_color);
         paint.anti_alias = true;
 
-        selected_layer
-            .pixmap
-            .stroke_path(&path, &paint, &stroke, Transform::identity(), None);
-        selected_layer.dirty = true;
+        // Determine the bounding box of affected tiles.
+        let half_thickness = (thickness * 0.5).ceil() as i32 + 1;
+        let min_x = pos1.x.min(pos2.x) - half_thickness;
+        let min_y = pos1.y.min(pos2.y) - half_thickness;
+        let max_x = pos1.x.max(pos2.x) + half_thickness;
+        let max_y = pos1.y.max(pos2.y) + half_thickness;
+
+        let tile_size = TILE_SIZE.cast_signed();
+        let tile_min_x = min_x.div_euclid(tile_size);
+        let tile_min_y = min_y.div_euclid(tile_size);
+        let tile_max_x = max_x.div_euclid(tile_size);
+        let tile_max_y = max_y.div_euclid(tile_size);
+
+        // Rasterize the stroke onto each affected tile individually.
+        for tile_y in tile_min_y..=tile_max_y {
+            for tile_x in tile_min_x..=tile_max_x {
+                let tile = selected_layer.get_tile_mut(TileCoord {
+                    x: tile_x,
+                    y: tile_y,
+                });
+
+                // Translate from canvas coordinates to tile coordinates: the tile's world origin is
+                // (tx * TILE_SIZE, ty * TILE_SIZE), so we shift the path by the negative of that.
+                let offset_x = -(tile_x as f32 * TILE_SIZE as f32);
+                let offset_y = -(tile_y as f32 * TILE_SIZE as f32);
+                let transform = Transform::from_translate(offset_x, offset_y);
+
+                tile.stroke_path(&path, &paint, &stroke, transform, None);
+            }
+        }
     }
 }
 
@@ -332,7 +373,7 @@ pub enum MoveLayerDirection {
     Down,
 }
 
-enum LayerInitialBuffer {
-    SolidColor(InitialColor),
-    Pixmap(Pixmap),
+enum LayerInitialPixels {
+    SolidColor(Color),
+    Tiles(HashMap<TileCoord, Pixmap>, Color),
 }

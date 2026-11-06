@@ -1,5 +1,5 @@
 use crate::app_state::AppState;
-use crate::app_state::canvas::layer::Layer;
+use crate::app_state::canvas::layer::{Layer, TILE_SIZE};
 use crate::utils::dimensions::DimensionsPxNonzero;
 use egui_wgpu::RenderState;
 use std::collections::HashMap;
@@ -81,7 +81,7 @@ impl Layers {
         app_state.canvas.layers_iter_mut().for_each(|layer| {
             if layer.dirty {
                 self.upload_layer(layer, canvas_dimensions);
-                layer.dirty = false;
+                layer.clear_dirty();
             }
         });
     }
@@ -93,7 +93,11 @@ impl Layers {
         initial_pixels: &[u8],
     ) {
         let new_layer = self.create_layer_resources(canvas_dimensions);
-        self.write_texture(&new_layer.texture, canvas_dimensions, initial_pixels);
+        self.write_texture(
+            new_layer.texture.as_image_copy(),
+            canvas_dimensions,
+            initial_pixels,
+        );
 
         self.layer_map.insert(layer_id, new_layer);
     }
@@ -102,7 +106,8 @@ impl Layers {
         self.layer_map.remove(&layer_id);
     }
 
-    /// Upload a layer's full CPU buffer to its raw GPU texture.
+    /// Upload the dirty tiles of a CPU layer to its raw GPU texture.
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
     fn upload_layer(&mut self, cpu_layer: &Layer, canvas_dimensions: DimensionsPxNonzero) {
         if !self.layer_map.contains_key(cpu_layer.id()) {
             eprintln!(
@@ -116,11 +121,82 @@ impl Layers {
             .get(cpu_layer.id())
             .expect("Should have validated that map contains layer");
 
-        self.write_texture(
-            &gpu_layer.texture,
-            canvas_dimensions,
-            cpu_layer.buffer_as_bytes(),
-        );
+        let canvas_w = canvas_dimensions.width().cast_signed();
+        let canvas_h = canvas_dimensions.height().cast_signed();
+        let tile_size = TILE_SIZE.cast_signed();
+
+        for coord in cpu_layer.dirty_tiles() {
+            let tile_origin_x = coord.x * tile_size;
+            let tile_origin_y = coord.y * tile_size;
+
+            // Check if the tile is within the canvas boundary.
+            if tile_origin_x >= canvas_w
+                || tile_origin_y >= canvas_h
+                || tile_origin_x + tile_size < 0
+                || tile_origin_y + tile_size < 0
+            {
+                continue;
+            }
+
+            let Some(tile_pixmap) = cpu_layer.tiles().get(coord) else {
+                continue;
+            };
+
+            // Clamp tile upload rectangle to canvas bounds.
+            let x_offset = 0i32.max(tile_origin_x) as u32;
+            let y_offset = 0i32.max(tile_origin_y) as u32;
+
+            let width = ((tile_origin_x + tile_size).min(canvas_w) - x_offset as i32) as u32;
+            let height = ((tile_origin_y + tile_size).min(canvas_h) - y_offset as i32) as u32;
+
+            if width == 0 || height == 0 {
+                continue;
+            }
+
+            // Offset within the tile pixmap for if the tile originates outside the canvas.
+            let tile_local_offset_x = (x_offset as i32 - tile_origin_x) as usize;
+            let tile_local_offset_y = (y_offset as i32 - tile_origin_y) as usize;
+
+            let texture_copy_info = wgpu::TexelCopyTextureInfo {
+                texture: &gpu_layer.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: x_offset,
+                    y: y_offset,
+                    z: 0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            };
+
+            if width == TILE_SIZE
+                && height == TILE_SIZE
+                && tile_local_offset_x == 0
+                && tile_local_offset_y == 0
+            {
+                // Upload the full tile directly.
+                self.write_texture(
+                    texture_copy_info,
+                    DimensionsPxNonzero::new(width, height),
+                    tile_pixmap.data(),
+                );
+            } else {
+                // Sub-rectangle upload (the edge tiles are clipped by the canvas boundaries).
+                let mut clipped_bytes = Vec::with_capacity((width * height * 4) as usize);
+                for row in 0..height as usize {
+                    let src_y = tile_local_offset_y + row;
+                    let src_start = src_y * (TILE_SIZE as usize * 4) + tile_local_offset_x * 4;
+                    let src_end = src_start + width as usize * 4;
+                    clipped_bytes.extend_from_slice(&tile_pixmap.data()[src_start..src_end]);
+                }
+
+                self.write_texture(
+                    texture_copy_info,
+                    DimensionsPxNonzero::new(width, height),
+                    &clipped_bytes,
+                );
+            }
+        }
+
         self.dirty = true;
     }
 
@@ -175,24 +251,24 @@ impl Layers {
     /// Wrapper function for `queue.write_texture`.
     fn write_texture(
         &self,
-        texture: &wgpu::Texture,
-        texture_dimensions: DimensionsPxNonzero,
+        texture_copy_info: wgpu::TexelCopyTextureInfo,
+        write_dimensions: DimensionsPxNonzero,
         bytes: &[u8],
     ) {
-        let width = texture_dimensions.width();
-        let height = texture_dimensions.height();
+        let write_width = write_dimensions.width();
+        let write_height = write_dimensions.height();
 
         self.render_state.queue.write_texture(
-            texture.as_image_copy(),
+            texture_copy_info,
             bytes,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(width * 4),
-                rows_per_image: Some(height),
+                bytes_per_row: Some(write_width * 4),
+                rows_per_image: Some(write_height),
             },
             wgpu::Extent3d {
-                width,
-                height,
+                width: write_width,
+                height: write_height,
                 depth_or_array_layers: 1,
             },
         );

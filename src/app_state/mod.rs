@@ -5,8 +5,11 @@ use std::collections::VecDeque;
 
 pub mod canvas;
 
-const DEFAULT_CANVAS_HEIGHT: u32 = 500;
-const DEFAULT_CANVAS_WIDTH: u32 = 500;
+// Note: wgpu only safely supports a texture size of 8192. To support larger canvases, we'd probably
+// want to use multiple textures per layer. That's definitely not a priority, though, since the
+// memory usage starts getting really high at that point anyway.
+const DEFAULT_CANVAS_HEIGHT: u32 = 2000;
+const DEFAULT_CANVAS_WIDTH: u32 = 2000;
 
 /// Manages the user-determined parts of state. Does not manage rendering, layout, or other
 /// technical aspects of the app, and does not contain any handles to managers of those aspects.

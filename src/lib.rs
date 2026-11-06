@@ -96,7 +96,7 @@ impl ApplicationHandler for App {
             app_state.canvas.dimensions(),
             app_state.canvas_view.dimensions,
             *initial_layer.id(),
-            initial_layer.buffer_as_bytes(),
+            &initial_layer.buffer_as_bytes(),
         );
 
         let mut display = Display::new(egui_ctx);
