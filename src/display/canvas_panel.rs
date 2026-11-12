@@ -1,5 +1,5 @@
-use crate::app_state::AppState;
 use crate::app_state::canvas::canvas_pos::CanvasPos;
+use crate::app_state::{AppState, MAX_ZOOM, MIN_ZOOM};
 use crate::display::scrollbar::{
     SCROLLBAR_TRACK_COLOR, SCROLLBAR_TRACK_SIZE_PT, Scrollbar, ScrollbarAxis,
 };
@@ -158,7 +158,7 @@ impl CanvasPanel {
         #[allow(clippy::float_cmp)]
         if zoom_delta != 1.0 {
             let old_zoom = app_state.canvas_view.zoom();
-            let new_zoom = (old_zoom * zoom_delta).clamp(0.1, 10.0);
+            let new_zoom = (old_zoom * zoom_delta).clamp(MIN_ZOOM, MAX_ZOOM);
 
             let px_per_pt = self.egui_ctx.pixels_per_point();
             let cursor_pos_px = (ui

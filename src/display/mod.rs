@@ -2,6 +2,7 @@ pub mod canvas_panel;
 mod left_panel;
 mod right_panel;
 mod scrollbar;
+mod top_panel;
 
 use crate::app_state::AppState;
 use crate::gpu::CanvasGpu;
@@ -9,6 +10,7 @@ use canvas_panel::CanvasPanel;
 use egui::Ui;
 use left_panel::LeftPanel;
 use right_panel::RightPanel;
+use top_panel::TopPanel;
 
 pub struct Display {
     canvas_panel: CanvasPanel,
@@ -24,6 +26,7 @@ impl Display {
     }
 
     pub fn draw(&mut self, ui: &mut Ui, app_state: &mut AppState, canvas_gpu: &mut CanvasGpu) {
+        TopPanel::draw(ui, app_state);
         LeftPanel::draw(ui, app_state);
         self.right_panel.draw(ui, app_state, canvas_gpu);
         self.canvas_panel.draw(ui, app_state);

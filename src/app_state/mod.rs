@@ -11,6 +11,9 @@ pub mod canvas;
 const DEFAULT_CANVAS_HEIGHT: u32 = 2000;
 const DEFAULT_CANVAS_WIDTH: u32 = 2000;
 
+pub const MIN_ZOOM: f32 = 0.1;
+pub const MAX_ZOOM: f32 = 10.0;
+
 /// Manages the user-determined parts of state. Does not manage rendering, layout, or other
 /// technical aspects of the app, and does not contain any handles to managers of those aspects.
 pub struct AppState {
@@ -139,16 +142,15 @@ impl CanvasView {
         self.clamp_pan(canvas);
     }
 
-    #[allow(dead_code)]
     pub fn set_zoom(&mut self, zoom: f32, canvas: &Canvas) {
-        self.zoom = zoom;
+        self.zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
         self.clamp_pan(canvas);
     }
 
     /// Allows setting both pan and zoom at the same time, only clamping after setting both.
     pub fn set_pan_and_zoom(&mut self, pan_px: Vec2, zoom: f32, canvas: &Canvas) {
         self.pan_px = pan_px;
-        self.zoom = zoom;
+        self.zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
         self.clamp_pan(canvas);
     }
 
