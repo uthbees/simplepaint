@@ -68,10 +68,11 @@ impl Scrollbar {
             && let Some(pointer_pos_2d) = ui.input(|i| i.pointer.interact_pos())
         {
             let pointer_pos = match self.axis {
-                ScrollbarAxis::Vertical => pointer_pos_2d.y,
-                ScrollbarAxis::Horizontal => pointer_pos_2d.x,
+                ScrollbarAxis::Vertical => pointer_pos_2d.y - response.rect.min.y,
+                ScrollbarAxis::Horizontal => pointer_pos_2d.x - response.rect.min.x,
             };
             let thumb_offset = pan * max_thumb_offset;
+
             if pointer_pos >= thumb_offset && pointer_pos <= thumb_offset + thumb_length {
                 // Grabbed the thumb - save the offset within the thumb that we're dragging from.
                 self.thumb_grab_offset = Some(pointer_pos - thumb_offset);
