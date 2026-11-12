@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use app_state::AppState;
 use display::Display;
-use egui::{FontDefinitions, ViewportId};
+use egui::ViewportId;
 use egui_wgpu::WgpuConfiguration;
 use egui_wgpu::winit::Painter;
 use egui_winit::State as EguiWinitState;
@@ -105,7 +105,7 @@ impl ApplicationHandler for App {
             &initial_layer.buffer_as_bytes(),
         );
 
-        let mut display = Display::new(egui_ctx);
+        let mut display = Display::new(egui_ctx, &app_state);
         display.register_canvas_view_texture_id(canvas_gpu.canvas_view().texture_id());
 
         self.app = Some(AppInner {

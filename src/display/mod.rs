@@ -12,21 +12,24 @@ use left_panel::LeftPanel;
 use right_panel::RightPanel;
 use top_panel::TopPanel;
 
+#[allow(clippy::struct_field_names)]
 pub struct Display {
-    canvas_panel: CanvasPanel,
+    top_panel: TopPanel,
     right_panel: RightPanel,
+    canvas_panel: CanvasPanel,
 }
 
 impl Display {
-    pub fn new(egui_ctx: egui::Context) -> Self {
+    pub fn new(egui_ctx: egui::Context, app_state: &AppState) -> Self {
         Self {
+            top_panel: TopPanel::new(app_state),
             canvas_panel: CanvasPanel::new(egui_ctx),
             right_panel: RightPanel::new(),
         }
     }
 
     pub fn draw(&mut self, ui: &mut Ui, app_state: &mut AppState, canvas_gpu: &mut CanvasGpu) {
-        TopPanel::draw(ui, app_state);
+        self.top_panel.draw(ui, app_state, canvas_gpu);
         LeftPanel::draw(ui, app_state);
         self.right_panel.draw(ui, app_state, canvas_gpu);
         self.canvas_panel.draw(ui, app_state);

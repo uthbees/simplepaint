@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Ord, PartialOrd)]
 pub struct DimensionsPx {
     pub width: u32,
     pub height: u32,
@@ -40,7 +40,7 @@ impl From<egui::Rect> for DimensionsPx {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Ord, PartialOrd)]
 pub struct DimensionsPxNonzero {
     width: u32,
     height: u32,
@@ -78,6 +78,15 @@ impl DimensionsPxNonzero {
         DimensionsPx {
             width: self.width,
             height: self.height,
+        }
+    }
+
+    /// Clamps each value individually to a provided maximum.
+    #[must_use]
+    pub fn clamp_max_values(self, max_width: u32, max_height: u32) -> Self {
+        Self {
+            width: self.width.min(max_width),
+            height: self.height.min(max_height),
         }
     }
 }

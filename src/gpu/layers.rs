@@ -9,8 +9,8 @@ pub struct Layers {
     sampler: wgpu::Sampler,
     composition_bind_group_layout: wgpu::BindGroupLayout,
     layer_map: HashMap<i32, LayerResources>,
-    // Whether there have been any updates to layer contents. Does not account for layers being
-    // created or deleted, as that's managed by the layer visibility code.
+    // Whether there have been any updates to layer contents, including layer resizing. Does not
+    // account for layers being created or deleted, as that's managed by the layer visibility code.
     pub dirty: bool,
 }
 
@@ -104,6 +104,21 @@ impl Layers {
 
     pub fn delete_layer(&mut self, layer_id: i32) {
         self.layer_map.remove(&layer_id);
+    }
+
+    pub fn resize_layer(
+        &mut self,
+        layer_id: i32,
+        new_dimensions: DimensionsPxNonzero,
+        new_buffer: &[u8],
+    ) {
+        // WGPU textures cannot be resized, only destroyed and re-created.
+        // Potential optimizations:
+        // - Keep the existing texture for small size reductions
+        // - Copy from the old layer to the new one to avoid re-computing the entire layer buffer
+        self.delete_layer(layer_id);
+        self.add_layer(new_dimensions, layer_id, new_buffer);
+        self.dirty = true;
     }
 
     /// Upload the dirty tiles of a CPU layer to its raw GPU texture.

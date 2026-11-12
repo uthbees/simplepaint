@@ -8,6 +8,9 @@ pub mod canvas;
 // Note: wgpu only safely supports a texture size of 8192. To support larger canvases, we'd probably
 // want to use multiple textures per layer. That's definitely not a priority, though, since the
 // memory usage starts getting really high at that point anyway.
+pub const MAX_CANVAS_HEIGHT: u32 = 8192;
+pub const MAX_CANVAS_WIDTH: u32 = 8192;
+
 const DEFAULT_CANVAS_HEIGHT: u32 = 2000;
 const DEFAULT_CANVAS_WIDTH: u32 = 2000;
 
@@ -155,7 +158,7 @@ impl CanvasView {
     }
 
     /// Clamps the pan to prevent the edges of the canvas from going beyond the center of the panel.
-    fn clamp_pan(&mut self, canvas: &Canvas) {
+    pub fn clamp_pan(&mut self, canvas: &Canvas) {
         let canvas_dim = canvas.dimensions();
 
         let half_w = canvas_dim.width() as f32 * 0.5;

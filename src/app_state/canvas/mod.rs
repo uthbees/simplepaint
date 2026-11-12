@@ -1,8 +1,9 @@
-use crate::app_state::ToolSettings;
 use crate::app_state::canvas::canvas_pos::CanvasPos;
 use crate::app_state::canvas::layer::{Layer, TILE_SIZE, TileCoord};
+use crate::app_state::{MAX_CANVAS_HEIGHT, MAX_CANVAS_WIDTH, ToolSettings};
 use crate::gpu::CanvasGpu;
 use crate::utils::dimensions::DimensionsPxNonzero;
+use canvas_edge_masks::CanvasEdgeMasks;
 use egui_dnd::DragDropResponse;
 use std::collections::HashMap;
 use std::slice::IterMut;
@@ -10,6 +11,7 @@ use tiny_skia::{
     Color, LineCap, LineJoin, Paint, PathBuilder, Pixmap, PixmapPaint, Stroke, Transform,
 };
 
+mod canvas_edge_masks;
 pub mod canvas_pos;
 pub mod layer;
 
@@ -26,6 +28,8 @@ pub struct Canvas {
 
 impl Canvas {
     pub fn new(dimensions: DimensionsPxNonzero) -> Canvas {
+        let dimensions = dimensions.clamp_max_values(MAX_CANVAS_WIDTH, MAX_CANVAS_HEIGHT);
+
         Canvas {
             dimensions,
             layers: vec![Layer::new(
@@ -76,6 +80,15 @@ impl Canvas {
                 .iter_mut()
                 .find(|layer| *layer.id() == selected_layer_id)
         })
+    }
+
+    pub fn resize(&mut self, new_dimensions: DimensionsPxNonzero, canvas_gpu: &mut CanvasGpu) {
+        let new_dimensions = new_dimensions.clamp_max_values(MAX_CANVAS_WIDTH, MAX_CANVAS_HEIGHT);
+
+        self.dimensions = new_dimensions;
+        for layer in &mut self.layers {
+            layer.resize(new_dimensions, canvas_gpu);
+        }
     }
 
     pub fn add_layer(&mut self, canvas_gpu: &mut CanvasGpu) {
@@ -307,6 +320,7 @@ impl Canvas {
         tool_settings: &ToolSettings,
         use_bg_color: bool,
     ) {
+        let canvas_dim = self.dimensions();
         let Some(selected_layer) = self.selected_layer_mut() else {
             return;
         };
@@ -360,6 +374,8 @@ impl Canvas {
         let tile_max_x = max_x.div_euclid(tile_size);
         let tile_max_y = max_y.div_euclid(tile_size);
 
+        let mut masks = CanvasEdgeMasks::new(canvas_dim);
+
         // Rasterize the stroke onto each affected tile individually.
         for tile_y in tile_min_y..=tile_max_y {
             for tile_x in tile_min_x..=tile_max_x {
@@ -372,11 +388,33 @@ impl Canvas {
 
                 // Translate from canvas coordinates to tile coordinates: the tile's world origin is
                 // (tx * TILE_SIZE, ty * TILE_SIZE), so we shift the path by the negative of that.
-                let offset_x = -(tile_x as f32 * TILE_SIZE as f32);
-                let offset_y = -(tile_y as f32 * TILE_SIZE as f32);
-                let transform = Transform::from_translate(offset_x, offset_y);
+                let tile_world_origin = CanvasPos {
+                    x: tile_x * tile_size,
+                    y: tile_y * tile_size,
+                };
+                let transform = Transform::from_translate(
+                    -tile_world_origin.x as f32,
+                    -tile_world_origin.y as f32,
+                );
 
-                tile.stroke_path(&path, &paint, &stroke, transform, None);
+                let first_invalid_canvas_x = canvas_dim.width().cast_signed();
+                let first_invalid_canvas_y = canvas_dim.height().cast_signed();
+
+                let on_right_edge = (tile_world_origin.x + tile_size - 1) >= first_invalid_canvas_x;
+                let on_bottom_edge =
+                    (tile_world_origin.y + tile_size - 1) >= first_invalid_canvas_y;
+
+                let mask = if on_right_edge && on_bottom_edge {
+                    Some(masks.bottom_right())
+                } else if on_right_edge {
+                    Some(masks.right())
+                } else if on_bottom_edge {
+                    Some(masks.bottom())
+                } else {
+                    None
+                };
+
+                tile.stroke_path(&path, &paint, &stroke, transform, mask);
             }
         }
     }
