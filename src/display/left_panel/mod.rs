@@ -39,7 +39,7 @@ impl LeftPanel {
         ui.label(RichText::new("Paintbrush settings").strong());
         ui.checkbox(&mut app_state.tool_settings.anti_alias, "Anti-alias");
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Thickness").strong());
+            ui.label(RichText::new("Thickness:"));
             ui.add(egui::DragValue::new(&mut app_state.tool_settings.stroke_width).range(1..=1000));
         });
     }
