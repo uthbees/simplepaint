@@ -47,7 +47,7 @@ impl TopPanel {
                 .set_zoom(2_f32.powf(zoom_log), &app_state.canvas);
         }
 
-        ui.spacing_mut().button_padding = Vec2 { x: 4.0, y: 0.0 };
+        ui.spacing_mut().button_padding = Vec2 { x: 4.0, y: 1.0 };
         let response = ui.button(icons::ICON_ZOOM_IN);
         if response.clicked() {
             Self::zoom_to_next_step(app_state, &ZoomDirection::In);

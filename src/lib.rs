@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use app_state::AppState;
 use display::Display;
-use egui::ViewportId;
+use egui::{FontDefinitions, ViewportId};
 use egui_wgpu::WgpuConfiguration;
 use egui_wgpu::winit::Painter;
 use egui_winit::State as EguiWinitState;
@@ -59,7 +59,13 @@ impl ApplicationHandler for App {
         // Build egui context and winit state.
         let viewport_id = ViewportId::ROOT;
         let egui_ctx = egui::Context::default();
+        egui_ctx.all_styles_mut(|style| {
+            for font_id in style.text_styles.values_mut() {
+                font_id.size = (font_id.size * 1.25).round();
+            }
+        });
         egui_material_icons::initialize(&egui_ctx);
+
         let egui_state = EguiWinitState::new(
             egui_ctx.clone(),
             viewport_id,
