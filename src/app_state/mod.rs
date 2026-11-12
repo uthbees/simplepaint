@@ -28,7 +28,7 @@ pub struct AppState {
 
 /// Settings that affect the usage of tools.
 pub struct ToolSettings {
-    pub antialias: bool,
+    pub anti_alias: bool,
     pub stroke_width: u32,
     pub foreground_color: Rgba,
     pub background_color: Rgba,
@@ -51,7 +51,7 @@ impl AppState {
 
         AppState {
             tool_settings: ToolSettings {
-                antialias: true,
+                anti_alias: true,
                 stroke_width: 3,
                 foreground_color: Rgba::BLACK,
                 background_color: Rgba::WHITE,

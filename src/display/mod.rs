@@ -1,4 +1,4 @@
-pub mod canvas_panel;
+mod canvas_panel;
 mod left_panel;
 mod right_panel;
 mod scrollbar;

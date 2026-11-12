@@ -3,7 +3,6 @@ mod colors;
 use crate::app_state::AppState;
 use crate::display::left_panel::colors::ColorControls;
 use egui::{Panel, RichText, Ui};
-use std::ops::RangeInclusive;
 
 pub struct LeftPanel {}
 
@@ -38,13 +37,10 @@ impl LeftPanel {
         ui.separator();
 
         ui.label(RichText::new("Paintbrush settings").strong());
-        ui.checkbox(&mut app_state.tool_settings.antialias, "Antialias");
+        ui.checkbox(&mut app_state.tool_settings.anti_alias, "Anti-alias");
         ui.horizontal(|ui| {
             ui.label(RichText::new("Thickness").strong());
-            ui.add(
-                egui::DragValue::new(&mut app_state.tool_settings.stroke_width)
-                    .range(RangeInclusive::new(1, 1000)),
-            );
+            ui.add(egui::DragValue::new(&mut app_state.tool_settings.stroke_width).range(1..=1000));
         });
     }
 }

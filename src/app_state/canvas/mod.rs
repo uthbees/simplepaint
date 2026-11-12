@@ -345,7 +345,7 @@ impl Canvas {
         .expect("Color values should be clamped properly");
         let mut paint = Paint::default();
         paint.set_color(converted_color);
-        paint.anti_alias = tool_settings.antialias;
+        paint.anti_alias = tool_settings.anti_alias;
 
         // Determine the bounding box of affected tiles.
         let half_thickness = (tool_settings.stroke_width as f32 * 0.5).ceil() as i32 + 1;
