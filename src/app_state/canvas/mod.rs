@@ -1,8 +1,8 @@
+use crate::app_state::ToolSettings;
 use crate::app_state::canvas::canvas_pos::CanvasPos;
 use crate::app_state::canvas::layer::{Layer, TILE_SIZE, TileCoord};
 use crate::gpu::CanvasGpu;
 use crate::utils::dimensions::DimensionsPxNonzero;
-use egui::Rgba;
 use egui_dnd::DragDropResponse;
 use std::collections::HashMap;
 use std::slice::IterMut;
@@ -300,7 +300,13 @@ impl Canvas {
     /// The stroke is run with offset on each tile in the bounding box defined by `pos1` and `pos2`
     /// so that only tiles that are modified or nearby are marked as dirty.
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
-    pub fn draw_line(&mut self, pos1: CanvasPos, pos2: CanvasPos, thickness: f32, raw_color: Rgba) {
+    pub fn draw_line(
+        &mut self,
+        pos1: CanvasPos,
+        pos2: CanvasPos,
+        tool_settings: &ToolSettings,
+        use_bg_color: bool,
+    ) {
         let Some(selected_layer) = self.selected_layer_mut() else {
             return;
         };
@@ -319,12 +325,17 @@ impl Canvas {
         };
 
         let stroke = Stroke {
-            width: thickness,
+            width: tool_settings.stroke_width as f32,
             line_cap: LineCap::Round,
             line_join: LineJoin::Round,
             ..Stroke::default()
         };
 
+        let raw_color = if use_bg_color {
+            tool_settings.background_color
+        } else {
+            tool_settings.foreground_color
+        };
         let converted_color: Color = Color::from_rgba(
             raw_color[0].clamp(0.0, 1.0),
             raw_color[1].clamp(0.0, 1.0),
@@ -334,10 +345,10 @@ impl Canvas {
         .expect("Color values should be clamped properly");
         let mut paint = Paint::default();
         paint.set_color(converted_color);
-        paint.anti_alias = true;
+        paint.anti_alias = tool_settings.antialias;
 
         // Determine the bounding box of affected tiles.
-        let half_thickness = (thickness * 0.5).ceil() as i32 + 1;
+        let half_thickness = (tool_settings.stroke_width as f32 * 0.5).ceil() as i32 + 1;
         let min_x = pos1.x.min(pos2.x) - half_thickness;
         let min_y = pos1.y.min(pos2.y) - half_thickness;
         let max_x = pos1.x.max(pos2.x) + half_thickness;

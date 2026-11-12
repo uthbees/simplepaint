@@ -3,6 +3,7 @@ mod colors;
 use crate::app_state::AppState;
 use crate::display::left_panel::colors::ColorControls;
 use egui::{Panel, RichText, Ui};
+use std::ops::RangeInclusive;
 
 pub struct LeftPanel {}
 
@@ -25,14 +26,25 @@ impl LeftPanel {
             });
     }
 
-    #[allow(unused_variables)]
     fn draw_tools(ui: &mut Ui, app_state: &mut AppState) {
         ui.add_space(8.0);
-        ui.heading("SimplePaint");
+        ui.heading("Tools");
         ui.separator();
 
         ui.add_space(8.0);
         ui.label(RichText::new("Tool").strong());
         ui.label("Paintbrush");
+
+        ui.separator();
+
+        ui.label(RichText::new("Paintbrush settings").strong());
+        ui.checkbox(&mut app_state.tool_settings.antialias, "Antialias");
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Thickness").strong());
+            ui.add(
+                egui::DragValue::new(&mut app_state.tool_settings.stroke_width)
+                    .range(RangeInclusive::new(1, 1000)),
+            );
+        });
     }
 }

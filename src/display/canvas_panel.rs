@@ -191,7 +191,9 @@ impl CanvasPanel {
         app_state: &mut AppState,
         canvas_response: &egui::Response,
     ) {
-        if let Some(cursor_pos) = ui.input(|i| i.pointer.interact_pos()) {
+        if let (Some(cursor_pos), secondary_down) =
+            ui.input(|i| (i.pointer.interact_pos(), i.pointer.secondary_down()))
+        {
             let rect = canvas_response.rect;
 
             let relative_pos = cursor_pos - rect.min;
@@ -200,8 +202,9 @@ impl CanvasPanel {
             app_state.canvas.draw_line(
                 pos_px,
                 self.last_drag_pos.unwrap_or(pos_px),
-                1.0,
-                app_state.foreground_color,
+                &app_state.tool_settings,
+                // Use the background color if right click is down and the foreground color otherwise.
+                secondary_down,
             );
             self.last_drag_pos = Some(pos_px);
         }

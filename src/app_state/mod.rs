@@ -14,13 +14,21 @@ const DEFAULT_CANVAS_WIDTH: u32 = 2000;
 /// Manages the user-determined parts of state. Does not manage rendering, layout, or other
 /// technical aspects of the app, and does not contain any handles to managers of those aspects.
 pub struct AppState {
-    pub foreground_color: Rgba,
-    pub background_color: Rgba,
+    pub tool_settings: ToolSettings,
+
     recent_colors: VecDeque<Option<Rgba>>,
     pub palette_colors: [Rgba; 10],
 
     pub canvas: Canvas,
     pub canvas_view: CanvasView,
+}
+
+/// Settings that affect the usage of tools.
+pub struct ToolSettings {
+    pub antialias: bool,
+    pub stroke_width: u32,
+    pub foreground_color: Rgba,
+    pub background_color: Rgba,
 }
 
 pub struct CanvasView {
@@ -39,8 +47,12 @@ impl AppState {
         recent_colors.resize(10, None);
 
         AppState {
-            foreground_color: Rgba::BLACK,
-            background_color: Rgba::WHITE,
+            tool_settings: ToolSettings {
+                antialias: true,
+                stroke_width: 3,
+                foreground_color: Rgba::BLACK,
+                background_color: Rgba::WHITE,
+            },
             canvas: Canvas::new(DimensionsPxNonzero::new(
                 DEFAULT_CANVAS_WIDTH,
                 DEFAULT_CANVAS_HEIGHT,

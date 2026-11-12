@@ -67,9 +67,19 @@ impl ColorControls {
         let fg_response = ui.interact(fg_rect, fg_id, Sense::click());
 
         // Draw background swatch (behind).
-        Self::draw_large_swatch(ui, bg_rect, app_state.background_color, &bg_response);
+        Self::draw_large_swatch(
+            ui,
+            bg_rect,
+            app_state.tool_settings.background_color,
+            &bg_response,
+        );
         // Draw foreground swatch (in front).
-        Self::draw_large_swatch(ui, fg_rect, app_state.foreground_color, &fg_response);
+        Self::draw_large_swatch(
+            ui,
+            fg_rect,
+            app_state.tool_settings.foreground_color,
+            &fg_response,
+        );
 
         // Popup for the foreground color picker.
         let fg_popup_id = ui.make_persistent_id("fg_color_popup");
@@ -115,9 +125,8 @@ impl ColorControls {
         app_state: &mut AppState,
     ) {
         let color = match color_picker {
-            MainColorPicker::Foreground => &mut app_state.foreground_color,
-
-            MainColorPicker::Background => &mut app_state.background_color,
+            MainColorPicker::Foreground => &mut app_state.tool_settings.foreground_color,
+            MainColorPicker::Background => &mut app_state.tool_settings.background_color,
         };
 
         let was_open_before = Popup::is_id_open(ui.ctx(), popup_id);
@@ -167,9 +176,9 @@ impl ColorControls {
             app_state.get_recent_colors(),
             |_, response, (_, color)| {
                 if response.clicked() {
-                    app_state.foreground_color = color;
+                    app_state.tool_settings.foreground_color = color;
                 } else if response.secondary_clicked() {
-                    app_state.background_color = color;
+                    app_state.tool_settings.background_color = color;
                 }
                 response.on_hover_text(
                     "Left click to set as foreground, right click to set as background",
@@ -191,10 +200,10 @@ impl ColorControls {
                 if response.double_clicked() {
                     Popup::open_id(ui.ctx(), popup_id);
                 } else if response.secondary_clicked() {
-                    app_state.background_color = color;
+                    app_state.tool_settings.background_color = color;
                     app_state.push_recent_color(color);
                 } else if response.clicked() {
-                    app_state.foreground_color = color;
+                    app_state.tool_settings.foreground_color = color;
                     app_state.push_recent_color(color);
                 }
 
@@ -218,7 +227,7 @@ impl ColorControls {
                     ui.data_mut(|d| d.insert_temp(cache_id, hsva));
 
                     if ui.input(|i| i.pointer.any_released()) {
-                        app_state.foreground_color = color;
+                        app_state.tool_settings.foreground_color = color;
                         app_state.push_recent_color(color);
                     }
                 }
