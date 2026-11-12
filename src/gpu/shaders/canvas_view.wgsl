@@ -7,8 +7,9 @@ struct CameraUniform {
 };
 
 @group(0) @binding(0) var canvas_texture: texture_2d<f32>;
-@group(0) @binding(1) var canvas_sampler: sampler;
-@group(0) @binding(2) var<uniform> camera: CameraUniform;
+@group(0) @binding(1) var sampler_linear: sampler;
+@group(0) @binding(2) var sampler_nearest: sampler;
+@group(0) @binding(3) var<uniform> camera: CameraUniform;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -53,5 +54,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(0.15, 0.15, 0.15, 1.0);
     }
 
-    return textureSample(canvas_texture, canvas_sampler, in.uv);
+    if (camera.zoom <= 1.0) {
+        return textureSample(canvas_texture, sampler_linear, in.uv);
+    } else {
+        return textureSample(canvas_texture, sampler_nearest, in.uv);
+    }
 }
