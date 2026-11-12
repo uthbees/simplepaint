@@ -2,54 +2,25 @@ use crate::app_state::AppState;
 use egui::color_picker::{Alpha, color_picker_hsva_2d, show_color_at};
 use egui::ecolor::Hsva;
 use egui::{
-    Color32, Id, Panel, Popup, PopupCloseBehavior, Rect, Rgba, RichText, Sense, SetOpenCommand,
+    Color32, Id, Popup, PopupCloseBehavior, Rect, Rgba, RichText, Sense, SetOpenCommand,
     StrokeKind, Ui,
 };
 
-const LARGE_SWATCH_SIZE: f32 = 28.0;
-const SMALL_SWATCH_SIZE: f32 = 16.0;
-const BACKGROUND_COLOR_SWATCH_OFFSET: f32 = 15.0;
-const COLOR_SLIDER_WIDTH: f32 = 275.0;
+pub const LARGE_SWATCH_SIZE: f32 = 28.0;
+pub const SMALL_SWATCH_SIZE: f32 = 16.0;
+pub const BACKGROUND_COLOR_SWATCH_OFFSET: f32 = 15.0;
+pub const COLOR_SLIDER_WIDTH: f32 = 275.0;
 
 #[derive(Copy, Clone)]
-enum MainColorPicker {
+pub enum MainColorPicker {
     Foreground,
     Background,
 }
 
-pub struct LeftPanel {}
+pub struct ColorControls {}
 
-impl LeftPanel {
-    /// Draws the left-hand side panel containing basic tool/color indicators.
+impl ColorControls {
     pub fn draw(ui: &mut Ui, app_state: &mut AppState) {
-        Panel::left("left_panel")
-            .exact_size(230.0)
-            .resizable(false)
-            .show(ui, |ui| {
-                Panel::bottom("color_panel")
-                    .exact_size(200.0)
-                    .resizable(false)
-                    .show(ui, |ui| {
-                        Self::draw_colors(ui, app_state);
-                    });
-                Panel::top("tools_panel").resizable(false).show(ui, |ui| {
-                    Self::draw_tools(ui, app_state);
-                });
-            });
-    }
-
-    #[allow(unused_variables)]
-    fn draw_tools(ui: &mut Ui, app_state: &mut AppState) {
-        ui.add_space(8.0);
-        ui.heading("SimplePaint");
-        ui.separator();
-
-        ui.add_space(8.0);
-        ui.label(RichText::new("Tool").strong());
-        ui.label("Paintbrush");
-    }
-
-    fn draw_colors(ui: &mut Ui, app_state: &mut AppState) {
         ui.add_space(4.0);
         Self::draw_fg_bg_colors(ui, app_state);
 
