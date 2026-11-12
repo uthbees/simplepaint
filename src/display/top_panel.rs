@@ -1,5 +1,5 @@
 use crate::app_state::{AppState, MAX_ZOOM, MIN_ZOOM};
-use egui::{DragValue, Frame, Panel, Ui, vec2};
+use egui::{DragValue, Frame, Panel, Ui, Vec2, vec2};
 use egui_material_icons::icons;
 
 pub struct TopPanel {}
@@ -17,6 +17,7 @@ impl TopPanel {
     }
 
     fn draw_zoom_controls(ui: &mut Ui, app_state: &mut AppState) {
+        ui.spacing_mut().item_spacing = Vec2 { x: 4.0, y: 0.0 };
         ui.label("Zoom:");
 
         let mut zoom_log = app_state.canvas_view.zoom().log2();
@@ -46,6 +47,7 @@ impl TopPanel {
                 .set_zoom(2_f32.powf(zoom_log), &app_state.canvas);
         }
 
+        ui.spacing_mut().button_padding = Vec2 { x: 4.0, y: 0.0 };
         let response = ui.button(icons::ICON_ZOOM_IN);
         if response.clicked() {
             Self::zoom_to_next_step(app_state, &ZoomDirection::In);
