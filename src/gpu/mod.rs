@@ -43,7 +43,6 @@ impl CanvasGpu {
             render_state,
             &camera,
             &composite_canvas,
-            canvas_dimensions,
             canvas_view_dimensions,
         );
 
@@ -70,5 +69,11 @@ impl CanvasGpu {
     pub fn render_canvas_view(&mut self, cpu_layers: &[Layer]) {
         self.canvas_view
             .render(&mut self.composite_canvas, &mut self.layers, cpu_layers);
+    }
+
+    pub fn resize_composite_canvas(&mut self, new_canvas_dimensions: DimensionsPxNonzero) {
+        self.composite_canvas.resize(new_canvas_dimensions);
+        self.canvas_view
+            .update_bind_group(&self.camera, &self.composite_canvas);
     }
 }

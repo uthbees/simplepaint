@@ -25,21 +25,7 @@ impl CompositeCanvas {
     ) -> Self {
         let device = &render_state.device;
 
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("composite_canvas_texture"),
-            size: wgpu::Extent3d {
-                width: canvas_dimensions.width(),
-                height: canvas_dimensions.height(),
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let (texture, texture_view) = Self::create_texture(&render_state, canvas_dimensions);
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("composite_canvas_pipeline_layout"),
@@ -83,6 +69,32 @@ impl CompositeCanvas {
             texture_view,
             last_draw_layers_command: None,
         }
+    }
+
+    fn create_texture(
+        render_state: &RenderState,
+        dimensions: DimensionsPxNonzero,
+    ) -> (wgpu::Texture, wgpu::TextureView) {
+        let texture = render_state
+            .device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("composite_canvas_texture"),
+                size: wgpu::Extent3d {
+                    width: dimensions.width(),
+                    height: dimensions.height(),
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        (texture, texture_view)
     }
 
     pub fn texture_view(&self) -> &wgpu::TextureView {
@@ -147,5 +159,11 @@ impl CompositeCanvas {
         self.render_state.queue.submit(iter::once(encoder.finish()));
         layers.dirty = false;
         self.last_draw_layers_command = Some(draw_layers_command);
+    }
+
+    /// Invalidates the canvas view bind group - should only be used by `CanvasGpu`.
+    pub(super) fn resize(&mut self, new_dimensions: DimensionsPxNonzero) {
+        let (_, texture_view) = Self::create_texture(&self.render_state, new_dimensions);
+        self.texture_view = texture_view;
     }
 }

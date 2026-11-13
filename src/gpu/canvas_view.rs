@@ -10,7 +10,10 @@ use wgpu::PipelineCompilationOptions;
 /// factors such as pan and zoom. The canvas view texture is what is actually rendered by egui.
 pub struct CanvasView {
     render_state: RenderState,
+    sampler_linear: wgpu::Sampler,
+    sampler_nearest: wgpu::Sampler,
     bind_group: wgpu::BindGroup,
+    bind_group_layout: wgpu::BindGroupLayout,
     pipeline: wgpu::RenderPipeline,
     texture_view: wgpu::TextureView,
     /// The canvas view texture's id registered with egui.
@@ -24,7 +27,6 @@ impl CanvasView {
         render_state: RenderState,
         camera: &Camera,
         composite_canvas: &CompositeCanvas,
-        canvas_dimensions: DimensionsPxNonzero,
         canvas_view_dimensions: DimensionsPxNonzero,
     ) -> Self {
         let device = &render_state.device;
@@ -85,28 +87,14 @@ impl CanvasView {
             ],
         });
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("canvas_view_bind_group"),
-            layout: &bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(composite_canvas.texture_view()),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler_linear),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler_nearest),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: camera.get_buffer_binding(),
-                },
-            ],
-        });
+        let bind_group = Self::create_bind_group(
+            &render_state,
+            &bind_group_layout,
+            &sampler_linear,
+            &sampler_nearest,
+            camera,
+            composite_canvas,
+        );
 
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("canvas_view_shader"),
@@ -153,7 +141,7 @@ impl CanvasView {
             cache: None,
         });
 
-        let texture_view = Self::create_canvas_view_texture(device, canvas_dimensions);
+        let texture_view = Self::create_canvas_view_texture(device, canvas_view_dimensions);
 
         let texture_id = render_state.renderer.write().register_native_texture(
             device,
@@ -163,7 +151,10 @@ impl CanvasView {
 
         Self {
             render_state,
+            sampler_linear,
+            sampler_nearest,
             bind_group,
+            bind_group_layout,
             pipeline,
             texture_view,
             texture_id,
@@ -274,5 +265,56 @@ impl CanvasView {
         });
 
         texture.create_view(&wgpu::TextureViewDescriptor::default())
+    }
+
+    fn create_bind_group(
+        render_state: &RenderState,
+        bind_group_layout: &wgpu::BindGroupLayout,
+        sampler_linear: &wgpu::Sampler,
+        sampler_nearest: &wgpu::Sampler,
+        camera: &Camera,
+        composite_canvas: &CompositeCanvas,
+    ) -> wgpu::BindGroup {
+        render_state
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("canvas_view_bind_group"),
+                layout: bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(
+                            composite_canvas.texture_view(),
+                        ),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(sampler_linear),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(sampler_nearest),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: camera.get_buffer_binding(),
+                    },
+                ],
+            })
+    }
+
+    pub(super) fn update_bind_group(
+        &mut self,
+        camera: &Camera,
+        composite_canvas: &CompositeCanvas,
+    ) {
+        self.bind_group = Self::create_bind_group(
+            &self.render_state,
+            &self.bind_group_layout,
+            &self.sampler_linear,
+            &self.sampler_nearest,
+            camera,
+            composite_canvas,
+        );
     }
 }

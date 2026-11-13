@@ -89,6 +89,7 @@ impl Canvas {
         for layer in &mut self.layers {
             layer.resize(new_dimensions, canvas_gpu);
         }
+        canvas_gpu.resize_composite_canvas(new_dimensions);
     }
 
     pub fn add_layer(&mut self, canvas_gpu: &mut CanvasGpu) {
