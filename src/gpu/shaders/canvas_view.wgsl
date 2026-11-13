@@ -54,7 +54,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(0.15, 0.15, 0.15, 1.0);
     }
 
-    if (camera.zoom <= 1.0) {
+    // Use linear sampling unless we're zoomed in to at least 200% to avoid the worst aliasing problems.
+    // When zoomed in beyond that point, use linear sampling to allow seeing each individual pixel better.
+    if (camera.zoom < 2.0) {
         return textureSample(canvas_texture, sampler_linear, in.uv);
     } else {
         return textureSample(canvas_texture, sampler_nearest, in.uv);
