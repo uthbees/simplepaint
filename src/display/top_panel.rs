@@ -131,7 +131,7 @@ impl TopPanel {
             || height_response.lost_focus())
             && ui_canvas_dim_nonzero != canvas_dim
         {
-            app_state.canvas.resize(ui_canvas_dim_nonzero, canvas_gpu);
+            app_state.canvas.resize(canvas_gpu, ui_canvas_dim_nonzero);
             app_state.canvas_view.clamp_pan(&app_state.canvas);
         } else if !width_response.has_focus()
             && !height_response.has_focus()

@@ -42,7 +42,7 @@ impl Display {
         self.top_panel.draw(ui, app_state, canvas_gpu);
         LeftPanel::draw(ui, app_state);
         self.right_panel.draw(ui, app_state, canvas_gpu);
-        self.canvas_panel.draw(ui, app_state, action_request_flags);
+        self.canvas_panel.draw(ui, app_state);
     }
 
     pub fn register_canvas_view_texture_id(&mut self, texture_id: egui::TextureId) {

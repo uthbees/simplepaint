@@ -34,7 +34,7 @@ struct AppInner {
     canvas_gpu: CanvasGpu,
     display: Display,
     app_state: AppState,
-    canvas_saved: bool,
+    last_title_update_state: TitleUpdateState,
 }
 
 impl ApplicationHandler for App {
@@ -46,8 +46,10 @@ impl ApplicationHandler for App {
 
         let app_state = AppState::new();
 
+        let title_update_state = TitleUpdateState::default();
+
         let window_attrs = Window::default_attributes()
-            .with_title(AppInner::get_window_title(&app_state, false))
+            .with_title(AppInner::build_window_title(&title_update_state))
             .with_inner_size(LogicalSize::new(1200.0, 800.0))
             .with_min_inner_size(LogicalSize::new(800.0, 300.0))
             .with_visible(false);
@@ -116,7 +118,7 @@ impl ApplicationHandler for App {
             canvas_gpu,
             display,
             app_state,
-            canvas_saved: false,
+            last_title_update_state: title_update_state,
         });
     }
 
@@ -176,16 +178,7 @@ impl AppInner {
             event_loop.exit();
         }
 
-        if let Some(canvas_saved) = action_request_flags.set_canvas_saved {
-            self.canvas_saved = canvas_saved;
-        }
-
-        if action_request_flags.handle_file_changed.is_some()
-            || action_request_flags.set_canvas_saved.is_some()
-        {
-            self.window
-                .set_title(&Self::get_window_title(&self.app_state, self.canvas_saved));
-        }
+        self.update_window_title();
 
         self.canvas_gpu
             .canvas_view()
@@ -232,11 +225,27 @@ impl AppInner {
         }
     }
 
-    fn get_window_title(app_state: &AppState, canvas_saved: bool) -> String {
-        let unsaved_marker = if canvas_saved { "" } else { "*" };
+    fn update_window_title(&mut self) {
+        let title_update_state = TitleUpdateState {
+            canvas_changed_since_last_save: self.app_state.canvas.changed_since_last_save,
+            image_file_path: self.app_state.image_file_path.clone(),
+        };
+        if self.last_title_update_state != title_update_state {
+            self.window
+                .set_title(&Self::build_window_title(&title_update_state));
+            self.last_title_update_state = title_update_state;
+        }
+    }
 
-        if let Some(file_path) = &app_state.image_file_path {
-            let file_name = Path::new(file_path)
+    fn build_window_title(title_update_state: &TitleUpdateState) -> String {
+        let unsaved_marker = if title_update_state.canvas_changed_since_last_save {
+            "*"
+        } else {
+            ""
+        };
+
+        if let Some(image_file_path) = &title_update_state.image_file_path {
+            let file_name = Path::new(image_file_path)
                 .file_name()
                 .unwrap_or("(Unreadable filename)".as_ref())
                 .to_str()
@@ -253,6 +262,10 @@ impl AppInner {
 #[derive(Default)]
 struct ActionRequestFlags {
     close_window: Option<()>,
-    set_canvas_saved: Option<bool>,
-    handle_file_changed: Option<()>,
+}
+
+#[derive(Default, Eq, PartialEq)]
+struct TitleUpdateState {
+    canvas_changed_since_last_save: bool,
+    image_file_path: Option<String>,
 }

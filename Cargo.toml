@@ -12,6 +12,7 @@ cast_possible_truncation = "allow"
 cast_precision_loss = "allow"
 
 [dependencies]
+arboard = "3.7.0"
 bytemuck = "1.25.2"
 egui = { version = "0.37.0", features = ["default_fonts"] }
 egui-wgpu = { version = "0.37.0", features = ["winit"] }

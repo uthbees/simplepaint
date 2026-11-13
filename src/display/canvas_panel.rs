@@ -1,4 +1,3 @@
-use crate::ActionRequestFlags;
 use crate::app_state::canvas::canvas_pos::CanvasPos;
 use crate::app_state::{AppState, MAX_ZOOM, MIN_ZOOM};
 use crate::display::scrollbar::{
@@ -35,12 +34,7 @@ impl CanvasPanel {
         self.canvas_view_texture_id = Some(texture_id);
     }
 
-    pub fn draw(
-        &mut self,
-        ui: &mut Ui,
-        app_state: &mut AppState,
-        action_request_flags: &mut ActionRequestFlags,
-    ) {
+    pub fn draw(&mut self, ui: &mut Ui, app_state: &mut AppState) {
         CentralPanel::default().show(ui, |ui| {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
             let panel_rect = ui.available_rect_before_wrap();
@@ -63,7 +57,7 @@ impl CanvasPanel {
                     egui::Color32::WHITE,
                 );
             }
-            self.handle_canvas_view_input(ui, app_state, action_request_flags, &response);
+            self.handle_canvas_view_input(ui, app_state, &response);
 
             self.draw_scrollbars(ui, app_state, panel_rect, canvas_view_rect);
         });
@@ -137,7 +131,6 @@ impl CanvasPanel {
         &mut self,
         ui: &mut Ui,
         app_state: &mut AppState,
-        action_request_flags: &mut ActionRequestFlags,
         response: &egui::Response,
     ) {
         if response.hovered() {
@@ -147,7 +140,7 @@ impl CanvasPanel {
         if response.drag_stopped() {
             self.last_drag_pos = None;
         } else if response.dragged() {
-            self.handle_dragged(ui, app_state, action_request_flags, response);
+            self.handle_dragged(ui, app_state, response);
         }
     }
 
@@ -196,7 +189,6 @@ impl CanvasPanel {
         &mut self,
         ui: &mut Ui,
         app_state: &mut AppState,
-        action_request_flags: &mut ActionRequestFlags,
         canvas_response: &egui::Response,
     ) {
         if let (Some(cursor_pos), secondary_down) =
@@ -215,7 +207,6 @@ impl CanvasPanel {
                 secondary_down,
             );
             self.last_drag_pos = Some(pos_px);
-            action_request_flags.set_canvas_saved = Some(false);
         }
     }
 }

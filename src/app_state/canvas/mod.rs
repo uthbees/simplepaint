@@ -25,6 +25,8 @@ pub struct Canvas {
     layers: Vec<Layer>,
     selected_layer_id: Option<i32>,
     next_layer_id: i32,
+
+    pub changed_since_last_save: bool,
 }
 
 impl Canvas {
@@ -41,6 +43,7 @@ impl Canvas {
             )],
             selected_layer_id: Some(0),
             next_layer_id: 1,
+            changed_since_last_save: false,
         }
     }
 
@@ -83,7 +86,9 @@ impl Canvas {
         })
     }
 
-    pub fn resize(&mut self, new_dimensions: DimensionsPxNonzero, canvas_gpu: &mut CanvasGpu) {
+    pub fn resize(&mut self, canvas_gpu: &mut CanvasGpu, new_dimensions: DimensionsPxNonzero) {
+        self.changed_since_last_save = true;
+
         let new_dimensions = new_dimensions.clamp_max_values(MAX_CANVAS_WIDTH, MAX_CANVAS_HEIGHT);
 
         self.dimensions = new_dimensions;
@@ -107,6 +112,8 @@ impl Canvas {
         canvas_gpu: &mut CanvasGpu,
         layer_id: i32,
     ) -> Result<(), String> {
+        self.changed_since_last_save = true;
+
         let (existing_index, existing_layer) = self
             .get_layer_with_idx(layer_id)
             .ok_or_else(|| format!("No layer with id {layer_id}"))?;
@@ -135,6 +142,8 @@ impl Canvas {
         insert_idx: usize,
         enabled: bool,
     ) {
+        self.changed_since_last_save = true;
+
         let insert_idx_checked = if insert_idx > self.layers.len() {
             self.layers.len()
         } else {
@@ -172,6 +181,8 @@ impl Canvas {
         layer_id: i32,
         direction: &MoveLayerDirection,
     ) -> Result<(), String> {
+        self.changed_since_last_save = true;
+
         let layer_idx = self
             .get_layer_with_idx(layer_id)
             .ok_or_else(|| format!("No layer with id {layer_id}"))?
@@ -200,6 +211,8 @@ impl Canvas {
     // This allows us to safely update the layer order without cloning anything. It's safe because
     // `update_vec` only rearranges items within the Vec, never adding or removing items.
     pub fn update_layers_from_dnd_response(&mut self, response: &DragDropResponse) {
+        self.changed_since_last_save = true;
+
         response.update_vec(&mut self.layers);
     }
 
@@ -241,6 +254,8 @@ impl Canvas {
         // but there's no UI for it, so there's no reason to bother.
         assert_eq!(kept_layer_idx.abs_diff(merged_layer_idx), 1);
 
+        self.changed_since_last_save = true;
+
         let merged_layer = self.layers.remove(merged_layer_idx);
 
         let new_kept_layer_idx = if merged_layer_idx < kept_layer_idx {
@@ -275,6 +290,8 @@ impl Canvas {
     }
 
     pub fn delete_layer(&mut self, layer_id: i32, canvas_gpu: &mut CanvasGpu) {
+        self.changed_since_last_save = true;
+
         let selected_layer_idx = self.selected_layer_id.and_then(|selected_layer_id| {
             self.layers
                 .iter()
@@ -372,6 +389,8 @@ impl Canvas {
         tool_settings: &ToolSettings,
         use_bg_color: bool,
     ) {
+        self.changed_since_last_save = true;
+
         let canvas_dim = self.dimensions();
         let Some(selected_layer) = self.selected_layer_mut() else {
             return;
