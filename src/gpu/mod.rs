@@ -62,6 +62,10 @@ impl CanvasGpu {
         &mut self.layers
     }
 
+    pub fn composite_canvas(&mut self) -> &mut CompositeCanvas {
+        &mut self.composite_canvas
+    }
+
     pub fn canvas_view(&mut self) -> &mut CanvasView {
         &mut self.canvas_view
     }

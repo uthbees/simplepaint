@@ -3,9 +3,6 @@ mod display;
 mod gpu;
 pub mod utils;
 
-use std::num::NonZeroU32;
-use std::sync::Arc;
-
 use app_state::AppState;
 use display::Display;
 use egui::ViewportId;
@@ -13,13 +10,16 @@ use egui_wgpu::WgpuConfiguration;
 use egui_wgpu::winit::Painter;
 use egui_winit::State as EguiWinitState;
 use gpu::CanvasGpu;
+use std::num::NonZeroU32;
+use std::path::Path;
+use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
-const WINDOW_TITLE: &str = "SimplePaint";
+const BASE_WINDOW_TITLE: &str = "SimplePaint";
 
 #[derive(Default)]
 pub struct App {
@@ -34,6 +34,7 @@ struct AppInner {
     canvas_gpu: CanvasGpu,
     display: Display,
     app_state: AppState,
+    canvas_saved: bool,
 }
 
 impl ApplicationHandler for App {
@@ -46,7 +47,7 @@ impl ApplicationHandler for App {
         let app_state = AppState::new();
 
         let window_attrs = Window::default_attributes()
-            .with_title(WINDOW_TITLE)
+            .with_title(AppInner::get_window_title(&app_state, false))
             .with_inner_size(LogicalSize::new(1200.0, 800.0))
             .with_min_inner_size(LogicalSize::new(800.0, 300.0))
             .with_visible(false);
@@ -115,6 +116,7 @@ impl ApplicationHandler for App {
             canvas_gpu,
             display,
             app_state,
+            canvas_saved: false,
         });
     }
 
@@ -159,10 +161,31 @@ impl AppInner {
         let raw_input = self.egui_state.take_egui_input(&self.window);
         let egui_ctx = self.egui_state.egui_ctx().clone();
 
+        let mut action_request_flags = ActionRequestFlags::default();
+
         let full_output = egui_ctx.run_ui(raw_input, |ui| {
-            self.display
-                .draw(ui, &mut self.app_state, &mut self.canvas_gpu);
+            self.display.draw(
+                ui,
+                &mut self.app_state,
+                &mut self.canvas_gpu,
+                &mut action_request_flags,
+            );
         });
+
+        if action_request_flags.close_window.is_some() {
+            event_loop.exit();
+        }
+
+        if let Some(canvas_saved) = action_request_flags.set_canvas_saved {
+            self.canvas_saved = canvas_saved;
+        }
+
+        if action_request_flags.handle_file_changed.is_some()
+            || action_request_flags.set_canvas_saved.is_some()
+        {
+            self.window
+                .set_title(&Self::get_window_title(&self.app_state, self.canvas_saved));
+        }
 
         self.canvas_gpu
             .canvas_view()
@@ -208,4 +231,28 @@ impl AppInner {
             self.window.set_visible(true);
         }
     }
+
+    fn get_window_title(app_state: &AppState, canvas_saved: bool) -> String {
+        let unsaved_marker = if canvas_saved { "" } else { "*" };
+
+        if let Some(file_path) = &app_state.image_file_path {
+            let file_name = Path::new(file_path)
+                .file_name()
+                .unwrap_or("(Unreadable filename)".as_ref())
+                .to_str()
+                .unwrap_or("(Unreadable filename)")
+                .to_string();
+
+            format!("{file_name}{unsaved_marker} – {BASE_WINDOW_TITLE}")
+        } else {
+            format!("Unsaved Image{unsaved_marker} – {BASE_WINDOW_TITLE}")
+        }
+    }
+}
+
+#[derive(Default)]
+struct ActionRequestFlags {
+    close_window: Option<()>,
+    set_canvas_saved: Option<bool>,
+    handle_file_changed: Option<()>,
 }

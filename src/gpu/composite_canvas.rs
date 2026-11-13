@@ -1,7 +1,9 @@
 use crate::gpu::layers::Layers;
 use crate::utils::dimensions::DimensionsPxNonzero;
 use egui_wgpu::RenderState;
+use image::ImageBuffer;
 use std::iter;
+use std::path::Path;
 use wgpu::PipelineCompilationOptions;
 
 /// The composite canvas is the texture containing the canvas data
@@ -9,6 +11,7 @@ use wgpu::PipelineCompilationOptions;
 pub struct CompositeCanvas {
     render_state: RenderState,
     pipeline: wgpu::RenderPipeline,
+    texture: wgpu::Texture,
     texture_view: wgpu::TextureView,
     last_draw_layers_command: Option<DrawLayersCommand>,
 }
@@ -66,6 +69,7 @@ impl CompositeCanvas {
         Self {
             render_state,
             pipeline,
+            texture,
             texture_view,
             last_draw_layers_command: None,
         }
@@ -89,7 +93,8 @@ impl CompositeCanvas {
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Rgba8Unorm,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_SRC,
                 view_formats: &[],
             });
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -163,7 +168,91 @@ impl CompositeCanvas {
 
     /// Invalidates the canvas view bind group - should only be used by `CanvasGpu`.
     pub(super) fn resize(&mut self, new_dimensions: DimensionsPxNonzero) {
-        let (_, texture_view) = Self::create_texture(&self.render_state, new_dimensions);
+        let (texture, texture_view) = Self::create_texture(&self.render_state, new_dimensions);
+        self.texture = texture;
         self.texture_view = texture_view;
+    }
+
+    pub fn save_texture_to_file(
+        &self,
+        file_path: impl AsRef<Path>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let device = &self.render_state.device;
+        let width = self.texture.width();
+        let height = self.texture.height();
+
+        // Calculate the buffer size including the row padding required by wgpu.
+        let bytes_per_pixel = 4; // RGBA8
+        let unpadded_bytes_per_row = width * bytes_per_pixel;
+        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let padded_bytes_per_row = (unpadded_bytes_per_row + align - 1) & !(align - 1);
+        let buffer_size = u64::from(padded_bytes_per_row * height);
+
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("composite_canvas_save_buffer"),
+            size: buffer_size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("composite_canvas_save_encoder"),
+        });
+
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_bytes_per_row),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        self.render_state.queue.submit(Some(encoder.finish()));
+
+        let buffer_slice = buffer.slice(..);
+        let (sender, receiver) = std::sync::mpsc::channel();
+
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            if let Err(err) = sender.send(result) {
+                eprintln!("GPU error saving texture to file: {err}");
+            }
+        });
+
+        device.poll(wgpu::PollType::wait_indefinitely())?;
+        receiver.recv()??;
+
+        let data = buffer_slice.get_mapped_range()?;
+        let mut unpadded_data = Vec::with_capacity((unpadded_bytes_per_row * height) as usize);
+
+        for row in 0..height {
+            let start = (row * padded_bytes_per_row) as usize;
+            let end = start + unpadded_bytes_per_row as usize;
+            unpadded_data.extend_from_slice(&data[start..end]);
+        }
+
+        drop(data);
+        buffer.unmap();
+
+        let img: ImageBuffer<image::Rgba<u8>, _> =
+            ImageBuffer::from_raw(width, height, unpadded_data)
+                .ok_or("Failed to create image buffer from raw texture data")?;
+
+        img.save(file_path)?;
+
+        Ok(())
     }
 }

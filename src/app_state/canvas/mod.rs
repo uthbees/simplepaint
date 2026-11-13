@@ -5,10 +5,11 @@ use crate::gpu::CanvasGpu;
 use crate::utils::dimensions::DimensionsPxNonzero;
 use canvas_edge_masks::CanvasEdgeMasks;
 use egui_dnd::DragDropResponse;
+use image::{DynamicImage, GenericImageView};
 use std::collections::HashMap;
 use std::slice::IterMut;
 use tiny_skia::{
-    Color, LineCap, LineJoin, Paint, PathBuilder, Pixmap, PixmapPaint, Stroke, Transform,
+    Color, ColorU8, LineCap, LineJoin, Paint, PathBuilder, Pixmap, PixmapPaint, Stroke, Transform,
 };
 
 mod canvas_edge_masks;
@@ -127,7 +128,7 @@ impl Canvas {
     }
 
     /// Adds a layer with specifiable properties.
-    fn add_layer_specified(
+    pub fn add_layer_specified(
         &mut self,
         canvas_gpu: &mut CanvasGpu,
         layer_initial_pixels: LayerInitialPixels,
@@ -309,6 +310,56 @@ impl Canvas {
         }
     }
 
+    /// Converts a loaded image into tiles.
+    pub fn external_image_to_tiles(image: &DynamicImage) -> HashMap<TileCoord, Pixmap> {
+        let mut tiles = HashMap::new();
+        let image_width = image.width();
+        let image_height = image.height();
+
+        let mut tile_origin_y = 0;
+        let mut tile_y = 0;
+
+        while tile_origin_y < image_height {
+            let mut tile_origin_x = 0;
+            let mut tile_x = 0;
+
+            while tile_origin_x < image_width {
+                let current_tile_width = TILE_SIZE.min(image_width - tile_origin_x);
+                let current_tile_height = TILE_SIZE.min(image_height - tile_origin_y);
+
+                let mut pixmap = Pixmap::new(TILE_SIZE, TILE_SIZE)
+                    .expect("Tile size should be valid for a pixmap");
+                let pixmap_pixels = pixmap.pixels_mut();
+
+                // Copy pixels from the image into the tile.
+                for y_in_tile in 0..current_tile_height {
+                    for x_in_tile in 0..current_tile_width {
+                        let pixel =
+                            image.get_pixel(tile_origin_x + x_in_tile, tile_origin_y + y_in_tile);
+                        let color = ColorU8::from_rgba(pixel[0], pixel[1], pixel[2], pixel[3]);
+
+                        pixmap_pixels[(y_in_tile * TILE_SIZE + x_in_tile) as usize] =
+                            color.premultiply();
+                    }
+                }
+
+                let coord = TileCoord {
+                    x: tile_x,
+                    y: tile_y,
+                };
+                tiles.insert(coord, pixmap);
+
+                tile_origin_x += TILE_SIZE;
+                tile_x += 1;
+            }
+
+            tile_origin_y += TILE_SIZE;
+            tile_y += 1;
+        }
+
+        tiles
+    }
+
     /// Draws a line from `pos1` to `pos2` with the specified thickness and color.
     ///
     /// The stroke is run with offset on each tile in the bounding box defined by `pos1` and `pos2`
@@ -426,7 +477,7 @@ pub enum MoveLayerDirection {
     Down,
 }
 
-enum LayerInitialPixels {
+pub enum LayerInitialPixels {
     SolidColor(Color),
     Tiles(HashMap<TileCoord, Pixmap>, Color),
 }

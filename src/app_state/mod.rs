@@ -27,6 +27,8 @@ pub struct AppState {
 
     pub canvas: Canvas,
     pub canvas_view: CanvasView,
+
+    pub image_file_path: Option<String>,
 }
 
 /// Settings that affect the usage of tools.
@@ -77,6 +79,7 @@ impl AppState {
                 DEFAULT_CANVAS_HEIGHT,
             )),
             canvas_view: CanvasView::new(),
+            image_file_path: None,
         }
     }
 
