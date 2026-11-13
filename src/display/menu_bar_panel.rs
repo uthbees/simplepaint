@@ -7,6 +7,7 @@ use arboard::Clipboard;
 use egui::{MenuBar, Panel, Ui};
 use image::{DynamicImage, GenericImageView, ImageBuffer};
 use rfd::{MessageDialog, MessageLevel};
+use std::borrow::Cow;
 use std::error::Error;
 use std::path::Path;
 use tiny_skia::Color;
@@ -68,7 +69,7 @@ impl MenuBarPanel {
     fn draw_edit_menu(ui: &mut Ui, app_state: &mut AppState, canvas_gpu: &mut CanvasGpu) {
         ui.menu_button("Edit", |ui| {
             if ui.button("Copy").clicked() {
-                todo!()
+                Self::handle_copy(canvas_gpu);
             }
             if ui.button("Paste").clicked()
                 && let Some(image) =
@@ -97,19 +98,20 @@ impl MenuBarPanel {
         canvas_gpu: &mut CanvasGpu,
         file_path: impl AsRef<Path>,
     ) -> Result<(), Box<dyn Error>> {
-        let result = canvas_gpu
-            .composite_canvas()
-            .save_texture_to_file(file_path);
-        if let Err(err) = result {
-            MessageDialog::new()
-                .set_level(MessageLevel::Error)
-                .set_title("Failed to save image")
-                .set_description(format!("Failed to save image: {err}"))
-                .show();
-            Err(err)
-        } else {
-            canvas.changed_since_last_save = false;
-            Ok(())
+        match canvas_gpu.composite_canvas().export_texture_to_image() {
+            Ok(image) => {
+                image.save(file_path)?;
+                canvas.changed_since_last_save = false;
+                Ok(())
+            }
+            Err(err) => {
+                MessageDialog::new()
+                    .set_level(MessageLevel::Error)
+                    .set_title("Failed to save image")
+                    .set_description(format!("Failed to save image: {err}"))
+                    .show();
+                Err(err)
+            }
         }
     }
 
@@ -162,6 +164,39 @@ impl MenuBarPanel {
             0,
             true,
         );
+    }
+
+    fn handle_copy(canvas_gpu: &mut CanvasGpu) {
+        if let Some(mut clipboard) = Self::get_clipboard_or_display_error() {
+            match canvas_gpu.composite_canvas().export_texture_to_image() {
+                Ok(image) => {
+                    let width = image.width() as usize;
+                    let height = image.height() as usize;
+                    let bytes = image.into_raw();
+
+                    let image_data = arboard::ImageData {
+                        width,
+                        height,
+                        bytes: Cow::Owned(bytes),
+                    };
+
+                    if let Err(err) = clipboard.set_image(image_data) {
+                        MessageDialog::new()
+                            .set_level(MessageLevel::Error)
+                            .set_title("Failed to copy image")
+                            .set_description(format!("Could not set clipboard: {err}"))
+                            .show();
+                    }
+                }
+                Err(err) => {
+                    MessageDialog::new()
+                        .set_level(MessageLevel::Error)
+                        .set_title("Failed to copy image")
+                        .set_description(format!("Could not export image to clipboard: {err}"))
+                        .show();
+                }
+            }
+        }
     }
 
     fn get_clipboard_or_display_error() -> Option<Clipboard> {

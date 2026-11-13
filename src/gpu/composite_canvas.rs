@@ -173,10 +173,9 @@ impl CompositeCanvas {
         self.texture_view = texture_view;
     }
 
-    pub fn save_texture_to_file(
+    pub fn export_texture_to_image(
         &self,
-        file_path: impl AsRef<Path>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<ImageBuffer<image::Rgba<u8>, Vec<u8>>, Box<dyn std::error::Error>> {
         let device = &self.render_state.device;
         let width = self.texture.width();
         let height = self.texture.height();
@@ -247,12 +246,10 @@ impl CompositeCanvas {
         drop(data);
         buffer.unmap();
 
-        let img: ImageBuffer<image::Rgba<u8>, _> =
+        let image: ImageBuffer<image::Rgba<u8>, _> =
             ImageBuffer::from_raw(width, height, unpadded_data)
                 .ok_or("Failed to create image buffer from raw texture data")?;
 
-        img.save(file_path)?;
-
-        Ok(())
+        Ok(image)
     }
 }
