@@ -59,10 +59,6 @@ impl AppState {
                 foreground_color: Rgba::BLACK,
                 background_color: Rgba::WHITE,
             },
-            canvas: Canvas::new(DimensionsPxNonzero::new(
-                DEFAULT_CANVAS_WIDTH,
-                DEFAULT_CANVAS_HEIGHT,
-            )),
             recent_colors,
             palette_colors: [
                 Rgba::BLACK,
@@ -76,6 +72,10 @@ impl AppState {
                 Rgba::from_rgb(1.0, 0.5, 0.0),
                 Rgba::from_rgb(0.5, 0.0, 0.5),
             ],
+            canvas: Canvas::new(DimensionsPxNonzero::new(
+                DEFAULT_CANVAS_WIDTH,
+                DEFAULT_CANVAS_HEIGHT,
+            )),
             canvas_view: CanvasView::new(),
         }
     }

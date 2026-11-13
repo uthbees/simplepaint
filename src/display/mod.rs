@@ -23,8 +23,8 @@ impl Display {
     pub fn new(egui_ctx: egui::Context, app_state: &AppState) -> Self {
         Self {
             top_panel: TopPanel::new(app_state),
-            canvas_panel: CanvasPanel::new(egui_ctx),
             right_panel: RightPanel::new(),
+            canvas_panel: CanvasPanel::new(egui_ctx),
         }
     }
 

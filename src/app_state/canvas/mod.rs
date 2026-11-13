@@ -38,8 +38,8 @@ impl Canvas {
                 0,
                 Color::WHITE,
             )],
-            next_layer_id: 1,
             selected_layer_id: Some(0),
+            next_layer_id: 1,
         }
     }
 
