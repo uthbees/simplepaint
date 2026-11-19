@@ -2,11 +2,11 @@ use crate::ActionRequestFlags;
 use crate::app_state::canvas::{Canvas, LayerInitialPixels};
 use crate::app_state::{AppState, MAX_CANVAS_HEIGHT, MAX_CANVAS_WIDTH};
 use crate::gpu::CanvasGpu;
+use crate::utils::Utils;
 use crate::utils::dimensions::DimensionsPxNonzero;
 use arboard::Clipboard;
 use egui::{MenuBar, Panel, Ui};
-use image::{DynamicImage, GenericImageView, ImageBuffer};
-use rfd::{MessageDialog, MessageLevel};
+use image::{DynamicImage, GenericImageView, ImageBuffer, RgbaImage, imageops};
 use std::borrow::Cow;
 use std::error::Error;
 use std::path::Path;
@@ -40,7 +40,7 @@ impl MenuBarPanel {
                 && let Some(file_path) = tinyfiledialogs::open_file_dialog(
                     "Select Image File",
                     "",
-                    Some((&FILE_FILTER_PATTERNS, "Image Files")),
+                    Some((&LOAD_FILE_FILTER_PATTERNS, "Image Files")),
                 )
             {
                 Self::load_file_as_layer(app_state, canvas_gpu, &file_path);
@@ -84,12 +84,19 @@ impl MenuBarPanel {
         if let Some(file_path) = tinyfiledialogs::save_file_dialog_with_filter(
             "Save Image As",
             "",
-            &FILE_FILTER_PATTERNS,
+            &SAVE_FILE_FILTER_PATTERNS,
             "",
-        ) && let Ok(()) =
-            Self::handle_save_to_file(&mut app_state.canvas, canvas_gpu, file_path.clone())
-        {
-            app_state.image_file_path = Some(file_path);
+        ) {
+            // Default to PNG if no format was specified.
+            let mut file_path = file_path.trim_end_matches('.').to_owned();
+            if !file_path.contains('.') {
+                file_path += ".png";
+            }
+
+            if let Ok(()) = Self::handle_save_to_file(&mut app_state.canvas, canvas_gpu, &file_path)
+            {
+                app_state.image_file_path = Some(file_path);
+            }
         }
     }
 
@@ -100,16 +107,41 @@ impl MenuBarPanel {
     ) -> Result<(), Box<dyn Error>> {
         match canvas_gpu.composite_canvas().export_texture_to_image() {
             Ok(image) => {
-                image.save(file_path)?;
-                canvas.changed_since_last_save = false;
-                Ok(())
+                let image = DynamicImage::from(image);
+
+                let is_jpg = file_path
+                    .as_ref()
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| {
+                        ext.eq_ignore_ascii_case("jpg") || ext.eq_ignore_ascii_case("jpeg")
+                    });
+
+                let save_result = if is_jpg {
+                    DynamicImage::ImageRgb8(Self::flatten_img_onto_white(&image)).save(file_path)
+                } else {
+                    image.save(file_path)
+                };
+
+                match save_result {
+                    Ok(()) => {
+                        canvas.changed_since_last_save = false;
+                        Ok(())
+                    }
+                    Err(err) => {
+                        Utils::show_error_dialog(
+                            "Failed to save image",
+                            &format!("Failed to save image: {err}"),
+                        );
+                        Err(err.into())
+                    }
+                }
             }
             Err(err) => {
-                MessageDialog::new()
-                    .set_level(MessageLevel::Error)
-                    .set_title("Failed to save image")
-                    .set_description(format!("Failed to save image: {err}"))
-                    .show();
+                Utils::show_error_dialog(
+                    "Failed to save image",
+                    &format!("Failed to save image: {err}"),
+                );
                 Err(err)
             }
         }
@@ -123,11 +155,10 @@ impl MenuBarPanel {
         match image::open(file_path) {
             Ok(image) => Self::add_layer_from_image(app_state, canvas_gpu, &image),
             Err(err) => {
-                MessageDialog::new()
-                    .set_level(MessageLevel::Error)
-                    .set_title("Failed to open image")
-                    .set_description(format!("Failed to open selected image: {err}"))
-                    .show();
+                Utils::show_error_dialog(
+                    "Failed to open image",
+                    &format!("Failed to open selected image: {err}"),
+                );
             }
         }
     }
@@ -141,14 +172,13 @@ impl MenuBarPanel {
 
         let (width, height) = image.dimensions();
         if width > MAX_CANVAS_WIDTH || height > MAX_CANVAS_HEIGHT {
-            MessageDialog::new()
-                .set_level(MessageLevel::Error)
-                .set_title("Failed to load image")
-                .set_description(format!(
+            Utils::show_error_dialog(
+                "Failed to load image",
+                &format!(
                     "Cannot load images larger than {MAX_CANVAS_WIDTH}x{MAX_CANVAS_HEIGHT}px\
                              (selected image was {width}x{height}px)"
-                ))
-                .show();
+                ),
+            );
             return;
         }
 
@@ -181,19 +211,17 @@ impl MenuBarPanel {
                     };
 
                     if let Err(err) = clipboard.set_image(image_data) {
-                        MessageDialog::new()
-                            .set_level(MessageLevel::Error)
-                            .set_title("Failed to copy image")
-                            .set_description(format!("Could not set clipboard: {err}"))
-                            .show();
+                        Utils::show_error_dialog(
+                            "Failed to copy image",
+                            &format!("Could not set clipboard: {err}"),
+                        );
                     }
                 }
                 Err(err) => {
-                    MessageDialog::new()
-                        .set_level(MessageLevel::Error)
-                        .set_title("Failed to copy image")
-                        .set_description(format!("Could not export image to clipboard: {err}"))
-                        .show();
+                    Utils::show_error_dialog(
+                        "Failed to copy image",
+                        &format!("Could not export image to clipboard: {err}"),
+                    );
                 }
             }
         }
@@ -203,11 +231,10 @@ impl MenuBarPanel {
         match Clipboard::new() {
             Ok(clipboard) => Some(clipboard),
             Err(err) => {
-                MessageDialog::new()
-                    .set_level(MessageLevel::Error)
-                    .set_title("Failed to set up clipboard")
-                    .set_description(format!("Could not complete action: {err}"))
-                    .show();
+                Utils::show_error_dialog(
+                    "Failed to set up clipboard",
+                    &format!("Could not complete action: {err}"),
+                );
                 None
             }
         }
@@ -228,13 +255,10 @@ impl MenuBarPanel {
                         return Some(DynamicImage::ImageRgba8(image_buffer));
                     }
 
-                    MessageDialog::new()
-                        .set_level(MessageLevel::Error)
-                        .set_title("Paste failed")
-                        .set_description(
-                            "Could not decode clipboard image data (may be too big).".to_string(),
-                        )
-                        .show();
+                    Utils::show_error_dialog(
+                        "Paste failed",
+                        "Could not decode clipboard image data (may be too big).",
+                    );
                 }
             } else if let Ok(text) = clipboard.get_text() {
                 let path = Path::new(&text);
@@ -246,10 +270,27 @@ impl MenuBarPanel {
 
         None
     }
+
+    fn flatten_img_onto_white(img: &DynamicImage) -> image::RgbImage {
+        let rgba = img.to_rgba8();
+        let (width, height) = rgba.dimensions();
+        let mut canvas: RgbaImage =
+            ImageBuffer::from_pixel(width, height, image::Rgba([255, 255, 255, 255]));
+        imageops::overlay(&mut canvas, &rgba, 0, 0);
+        DynamicImage::ImageRgba8(canvas).to_rgb8()
+    }
 }
 
 // https://github.com/image-rs/image/blob/main/README.md#supported-image-formats
-const FILE_FILTER_PATTERNS: [&str; 16] = [
-    "*.avif", "*.bmp", "*.exr", "*.ff", "*.gif", "*.hdr", "*.ico", "*.jpg", "*.jpeg", "*.png",
-    "*.pnm", "*.qoi", "*.tga", "*.tif", "*.tiff", "*.webp",
+// Excluded because of potential format problems that would need to be tested/handled individually:
+// "*.gif"
+const LOAD_FILE_FILTER_PATTERNS: [&str; 15] = [
+    "*.jpg", "*.jpeg", "*.png", "*.webp", "*.avif", "*.bmp", "*.ff", "*.qoi", "*.tga", "*.tif",
+    "*.tiff", "*.hdr", "*.ico", "*.pnm", "*.exr",
+];
+// Excluded because of potential format problems that would need to be tested/handled individually:
+// "*.hdr", "*.ico", "*.gif", "*.exr"
+const SAVE_FILE_FILTER_PATTERNS: [&str; 12] = [
+    "*.jpg", "*.jpeg", "*.png", "*.webp", "*.avif", "*.bmp", "*.ff", "*.qoi", "*.tga", "*.tif",
+    "*.tiff", "*.pnm",
 ];
