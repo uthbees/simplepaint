@@ -345,6 +345,12 @@ impl RightPanel {
                                         .response;
                                     let response = response.interact(Sense::click());
 
+                                    if response.clicked() {
+                                        // Using Sense::click() on the label means that the widget
+                                        // frame won't get click events, so we have to check for
+                                        // selection here as well.
+                                        result.selected = true;
+                                    }
                                     if response.double_clicked() {
                                         self.is_editing_selected_layer_name = true;
                                     }
