@@ -221,10 +221,10 @@ impl LayerStack {
                 if layer_idx > 0 {
                     // The layer array is inverted, so `layer_idx - 1` is the layer above.
                     let above_layer_idx = layer_idx - 1;
-                    // Since merge_layer_down only supports merging down, we need to swap this
-                    // layer with the one above it, then merge it down, so that things like layer
-                    // names come from the correct layer.
-                    self.layers.swap(layer_idx, above_layer_idx);
+                    // merge_layer_down only supports merging down, so we just copy the name
+                    // of the above layer to the below layer to make it look like the above layer
+                    // was the one that was kept.
+                    self.layers[layer_idx].name = self.layers[above_layer_idx].name.clone();
                     self.merge_layer_down(above_layer_idx);
                     Ok(())
                 } else {
