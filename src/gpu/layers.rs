@@ -19,9 +19,19 @@ pub struct Layers {
 }
 
 pub struct LayerResources {
+    render_state: RenderState,
     pub texture: wgpu::Texture,
     pub texture_id: egui::TextureId,
     pub composition_bind_group: wgpu::BindGroup,
+}
+
+impl Drop for LayerResources {
+    fn drop(&mut self) {
+        self.render_state
+            .renderer
+            .write()
+            .free_texture(&self.texture_id);
+    }
 }
 
 impl Layers {
@@ -278,6 +288,7 @@ impl Layers {
         });
 
         LayerResources {
+            render_state: self.render_state.clone(),
             texture,
             texture_id,
             composition_bind_group,
