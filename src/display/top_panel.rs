@@ -1,7 +1,7 @@
 use crate::app_state::{AppState, MAX_CANVAS_HEIGHT, MAX_CANVAS_WIDTH, MAX_ZOOM, MIN_ZOOM};
 use crate::gpu::CanvasGpu;
 use crate::utils::dimensions::DimensionsPx;
-use egui::{DragValue, Frame, Panel, Ui, Vec2, vec2};
+use egui::{Button, DragValue, Frame, Panel, Ui, Vec2, vec2};
 use egui_material_icons::icons;
 
 pub struct TopPanel {
@@ -60,14 +60,21 @@ impl TopPanel {
                     .set_zoom(2_f32.powf(zoom_log), &app_state.canvas);
             }
 
-            let response = ui.button(icons::ICON_ZOOM_OUT);
+            ui.spacing_mut().button_padding = Vec2 { x: 4.0, y: 1.0 };
+
+            let response = ui.add_enabled(
+                (app_state.canvas_view.zoom() - MIN_ZOOM).abs() > 0.00001,
+                Button::new(icons::ICON_ZOOM_OUT),
+            );
             if response.clicked() {
                 Self::zoom_to_next_step(app_state, &ZoomDirection::Out);
             }
             response.on_hover_text("Zoom out");
 
-            ui.spacing_mut().button_padding = Vec2 { x: 4.0, y: 1.0 };
-            let response = ui.button(icons::ICON_ZOOM_IN);
+            let response = ui.add_enabled(
+                (app_state.canvas_view.zoom() - MAX_ZOOM).abs() > 0.001,
+                Button::new(icons::ICON_ZOOM_IN),
+            );
             if response.clicked() {
                 Self::zoom_to_next_step(app_state, &ZoomDirection::In);
             }
