@@ -138,6 +138,7 @@ impl CanvasPanel {
         }
 
         if response.drag_stopped() {
+            app_state.canvas.commit_staging_layer();
             self.last_drag_pos = None;
         } else if response.dragged() {
             self.handle_dragged(ui, app_state, response);
@@ -199,7 +200,7 @@ impl CanvasPanel {
             let relative_pos = cursor_pos - rect.min;
             let pos_px = CanvasPos::from_panel_pos(relative_pos, rect, app_state);
 
-            app_state.canvas.draw_line(
+            app_state.canvas.staging_layer_mut().draw_line(
                 pos_px,
                 self.last_drag_pos.unwrap_or(pos_px),
                 &app_state.tool_settings,

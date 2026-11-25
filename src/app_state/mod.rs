@@ -1,4 +1,5 @@
 use crate::app_state::canvas::Canvas;
+use crate::gpu::CanvasGpu;
 use crate::utils::dimensions::DimensionsPxNonzero;
 use egui::{Rgba, Vec2};
 use std::collections::VecDeque;
@@ -11,8 +12,8 @@ pub mod canvas;
 pub const MAX_CANVAS_HEIGHT: u32 = 8192;
 pub const MAX_CANVAS_WIDTH: u32 = 8192;
 
-const DEFAULT_CANVAS_HEIGHT: u32 = 2000;
-const DEFAULT_CANVAS_WIDTH: u32 = 2000;
+pub const DEFAULT_CANVAS_HEIGHT: u32 = 2000;
+pub const DEFAULT_CANVAS_WIDTH: u32 = 2000;
 
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 10.0;
@@ -50,7 +51,7 @@ pub struct CanvasView {
 }
 
 impl AppState {
-    pub fn new() -> AppState {
+    pub fn new(canvas_gpu: &mut CanvasGpu, canvas_dimensions: DimensionsPxNonzero) -> AppState {
         let mut recent_colors = VecDeque::with_capacity(10);
         recent_colors.resize(10, None);
 
@@ -74,10 +75,7 @@ impl AppState {
                 Rgba::from_rgb(1.0, 0.5, 0.0),
                 Rgba::from_rgb(0.5, 0.0, 0.5),
             ],
-            canvas: Canvas::new(DimensionsPxNonzero::new(
-                DEFAULT_CANVAS_WIDTH,
-                DEFAULT_CANVAS_HEIGHT,
-            )),
+            canvas: Canvas::new(canvas_gpu, canvas_dimensions),
             canvas_view: CanvasView::new(),
             image_file_path: None,
         }

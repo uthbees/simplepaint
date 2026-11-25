@@ -1,4 +1,5 @@
 use crate::ActionRequestFlags;
+use crate::app_state::canvas::layer::{TILE_SIZE, TileCoord};
 use crate::app_state::canvas::{Canvas, LayerInitialPixels};
 use crate::app_state::{AppState, MAX_CANVAS_HEIGHT, MAX_CANVAS_WIDTH};
 use crate::gpu::CanvasGpu;
@@ -8,9 +9,10 @@ use arboard::Clipboard;
 use egui::{MenuBar, Panel, Ui};
 use image::{DynamicImage, GenericImageView, ImageBuffer, RgbaImage, imageops};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
-use tiny_skia::Color;
+use tiny_skia::{Color, ColorU8, Pixmap};
 
 pub struct MenuBarPanel {}
 
@@ -45,7 +47,7 @@ impl MenuBarPanel {
             {
                 Self::load_file_as_layer(app_state, canvas_gpu, &file_path);
                 app_state.image_file_path = Some(file_path);
-                app_state.canvas.changed_since_last_save = false;
+                app_state.canvas.layer_stack_mut().changed_since_last_save = false;
             }
             if ui.button("Save").clicked() {
                 if let Some(file_path) = &app_state.image_file_path {
@@ -125,7 +127,7 @@ impl MenuBarPanel {
 
                 match save_result {
                     Ok(()) => {
-                        canvas.changed_since_last_save = false;
+                        canvas.layer_stack_mut().changed_since_last_save = false;
                         Ok(())
                     }
                     Err(err) => {
@@ -188,12 +190,62 @@ impl MenuBarPanel {
             canvas.resize(canvas_gpu, DimensionsPxNonzero::new(new_width, new_height));
         }
 
-        canvas.add_layer_specified(
+        canvas.layer_stack_mut().add_layer_specified(
             canvas_gpu,
-            LayerInitialPixels::Tiles(Canvas::external_image_to_tiles(image), Color::TRANSPARENT),
+            LayerInitialPixels::Tiles(Self::external_image_to_tiles(image), Color::TRANSPARENT),
             0,
             true,
         );
+    }
+
+    /// Converts a loaded image into tiles.
+    pub fn external_image_to_tiles(image: &DynamicImage) -> HashMap<TileCoord, Pixmap> {
+        let mut tiles = HashMap::new();
+        let image_width = image.width();
+        let image_height = image.height();
+
+        let mut tile_origin_y = 0;
+        let mut tile_y = 0;
+
+        while tile_origin_y < image_height {
+            let mut tile_origin_x = 0;
+            let mut tile_x = 0;
+
+            while tile_origin_x < image_width {
+                let current_tile_width = TILE_SIZE.min(image_width - tile_origin_x);
+                let current_tile_height = TILE_SIZE.min(image_height - tile_origin_y);
+
+                let mut pixmap = Pixmap::new(TILE_SIZE, TILE_SIZE)
+                    .expect("Tile size should be valid for a pixmap");
+                let pixmap_pixels = pixmap.pixels_mut();
+
+                // Copy pixels from the image into the tile.
+                for y_in_tile in 0..current_tile_height {
+                    for x_in_tile in 0..current_tile_width {
+                        let pixel =
+                            image.get_pixel(tile_origin_x + x_in_tile, tile_origin_y + y_in_tile);
+                        let color = ColorU8::from_rgba(pixel[0], pixel[1], pixel[2], pixel[3]);
+
+                        pixmap_pixels[(y_in_tile * TILE_SIZE + x_in_tile) as usize] =
+                            color.premultiply();
+                    }
+                }
+
+                let coord = TileCoord {
+                    x: tile_x,
+                    y: tile_y,
+                };
+                tiles.insert(coord, pixmap);
+
+                tile_origin_x += TILE_SIZE;
+                tile_x += 1;
+            }
+
+            tile_origin_y += TILE_SIZE;
+            tile_y += 1;
+        }
+
+        tiles
     }
 
     fn handle_copy(canvas_gpu: &mut CanvasGpu) {

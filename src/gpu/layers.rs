@@ -1,14 +1,18 @@
 use crate::app_state::AppState;
-use crate::app_state::canvas::layer::{Layer, TILE_SIZE};
+use crate::app_state::canvas::layer::{Layer, LayerId, TILE_SIZE};
 use crate::utils::dimensions::DimensionsPxNonzero;
 use egui_wgpu::RenderState;
 use std::collections::HashMap;
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 pub struct Layers {
+    free_layer_gpu_resources_rx: Receiver<LayerId>,
+    free_layer_gpu_resources_tx: Sender<LayerId>,
+
     render_state: RenderState,
     sampler: wgpu::Sampler,
     composition_bind_group_layout: wgpu::BindGroupLayout,
-    layer_map: HashMap<i32, LayerResources>,
+    layer_map: HashMap<LayerId, LayerResources>,
     // Whether there have been any updates to layer contents, including layer resizing. Does not
     // account for layers being created or deleted, as that's managed by the layer visibility code.
     pub dirty: bool,
@@ -58,7 +62,11 @@ impl Layers {
                 ],
             });
 
+        let (free_tx, free_rx) = channel();
+
         Self {
+            free_layer_gpu_resources_rx: free_rx,
+            free_layer_gpu_resources_tx: free_tx,
             render_state,
             sampler,
             composition_bind_group_layout,
@@ -71,25 +79,43 @@ impl Layers {
         &self.composition_bind_group_layout
     }
 
-    pub fn layer_map(&self) -> &HashMap<i32, LayerResources> {
+    pub fn layer_map(&self) -> &HashMap<LayerId, LayerResources> {
         &self.layer_map
+    }
+
+    pub fn free_layer_gpu_resources_tx(&self) -> Sender<LayerId> {
+        self.free_layer_gpu_resources_tx.clone()
     }
 
     /// Upload any changes to the CPU canvas to the GPU, including layer additions and deletions.
     pub fn sync_cpu_canvas_updates(&mut self, app_state: &mut AppState) {
         let canvas_dimensions = app_state.canvas.dimensions();
-        app_state.canvas.layers_iter_mut().for_each(|layer| {
-            if layer.dirty {
-                self.upload_layer(layer, canvas_dimensions);
-                layer.clear_dirty();
-            }
-        });
+        app_state
+            .canvas
+            .layer_stack_mut()
+            .layers_iter_mut()
+            .for_each(|layer| {
+                if layer.dirty {
+                    self.upload_layer(layer, canvas_dimensions);
+                    layer.clear_dirty();
+                }
+            });
+
+        let staging_layer = app_state.canvas.staging_layer_mut().layer_mut();
+        if staging_layer.dirty {
+            self.upload_layer(staging_layer, canvas_dimensions);
+            staging_layer.clear_dirty();
+        }
+
+        while let Ok(layer_id) = self.free_layer_gpu_resources_rx.try_recv() {
+            self.layer_map.remove(&layer_id);
+        }
     }
 
     pub fn add_layer(
         &mut self,
         canvas_dimensions: DimensionsPxNonzero,
-        layer_id: i32,
+        layer_id: LayerId,
         initial_pixels: &[u8],
     ) {
         let new_layer = self.create_layer_resources(canvas_dimensions);
@@ -102,13 +128,9 @@ impl Layers {
         self.layer_map.insert(layer_id, new_layer);
     }
 
-    pub fn delete_layer(&mut self, layer_id: i32) {
-        self.layer_map.remove(&layer_id);
-    }
-
     pub fn resize_layer(
         &mut self,
-        layer_id: i32,
+        layer_id: LayerId,
         new_dimensions: DimensionsPxNonzero,
         new_buffer: &[u8],
     ) {
@@ -116,7 +138,7 @@ impl Layers {
         // Potential optimizations:
         // - Keep the existing texture for small size reductions
         // - Copy from the old layer to the new one to avoid re-computing the entire layer buffer
-        self.delete_layer(layer_id);
+        self.layer_map.remove(&layer_id);
         self.add_layer(new_dimensions, layer_id, new_buffer);
         self.dirty = true;
     }
@@ -124,17 +146,13 @@ impl Layers {
     /// Upload the dirty tiles of a CPU layer to its raw GPU texture.
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
     fn upload_layer(&mut self, cpu_layer: &Layer, canvas_dimensions: DimensionsPxNonzero) {
-        if !self.layer_map.contains_key(cpu_layer.id()) {
+        let Some(gpu_layer) = &self.layer_map.get(cpu_layer.id()) else {
             eprintln!(
-                "Error: Tried to upload data to an unregistered layer ({}).",
+                "Error: Tried to upload data to an unregistered layer ({:?}).",
                 cpu_layer.id()
             );
             return;
-        }
-        let gpu_layer = &self
-            .layer_map
-            .get(cpu_layer.id())
-            .expect("Should have validated that map contains layer");
+        };
 
         let canvas_w = canvas_dimensions.width().cast_signed();
         let canvas_h = canvas_dimensions.height().cast_signed();
@@ -152,10 +170,6 @@ impl Layers {
             {
                 continue;
             }
-
-            let Some(tile_pixmap) = cpu_layer.tiles().get(coord) else {
-                continue;
-            };
 
             // Clamp tile upload rectangle to canvas bounds.
             let x_offset = 0i32.max(tile_origin_x) as u32;
@@ -183,6 +197,13 @@ impl Layers {
                 aspect: wgpu::TextureAspect::All,
             };
 
+            // Default to a transparent tile if this dirty tile is uninitialized - this is only
+            // expected to happen with the staging layer, which is always transparent.
+            let tile_data: &[u8] = cpu_layer
+                .tiles()
+                .get(coord)
+                .map_or(&EMPTY_TILE_DATA, |pixmap| pixmap.data());
+
             if width == TILE_SIZE
                 && height == TILE_SIZE
                 && tile_local_offset_x == 0
@@ -192,7 +213,7 @@ impl Layers {
                 self.write_texture(
                     texture_copy_info,
                     DimensionsPxNonzero::new(width, height),
-                    tile_pixmap.data(),
+                    tile_data,
                 );
             } else {
                 // Sub-rectangle upload (the edge tiles are clipped by the canvas boundaries).
@@ -201,7 +222,7 @@ impl Layers {
                     let src_y = tile_local_offset_y + row;
                     let src_start = src_y * (TILE_SIZE as usize * 4) + tile_local_offset_x * 4;
                     let src_end = src_start + width as usize * 4;
-                    clipped_bytes.extend_from_slice(&tile_pixmap.data()[src_start..src_end]);
+                    clipped_bytes.extend_from_slice(&tile_data[src_start..src_end]);
                 }
 
                 self.write_texture(
@@ -210,9 +231,9 @@ impl Layers {
                     &clipped_bytes,
                 );
             }
-        }
 
-        self.dirty = true;
+            self.dirty = true;
+        }
     }
 
     fn create_layer_resources(&self, canvas_dimensions: DimensionsPxNonzero) -> LayerResources {
@@ -289,3 +310,6 @@ impl Layers {
         );
     }
 }
+
+static EMPTY_TILE_DATA: [u8; (TILE_SIZE * TILE_SIZE * 4) as usize] =
+    [0; (TILE_SIZE * TILE_SIZE * 4) as usize];

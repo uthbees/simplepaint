@@ -1,7 +1,7 @@
+use crate::gpu;
 use crate::gpu::camera::Camera;
 use crate::gpu::composite_canvas::{CompositeCanvas, DrawLayersCommand};
 use crate::utils::dimensions::DimensionsPxNonzero;
-use crate::{app_state, gpu};
 use egui_wgpu::RenderState;
 use std::iter;
 use wgpu::PipelineCompilationOptions;
@@ -191,19 +191,13 @@ impl CanvasView {
 
     /// Render the canvas view texture using the canvas texture with the camera uniform.
     ///
-    /// Note: Use the wrapper function instead of using this directly.
+    /// Note: Use the wrapper function instead of calling this directly.
     pub(super) fn render(
         &mut self,
         composite_canvas: &mut CompositeCanvas,
         gpu_layers: &mut gpu::Layers,
-        cpu_layers: &[app_state::canvas::layer::Layer],
+        draw_layers_command: DrawLayersCommand,
     ) {
-        let mut draw_layers_command = DrawLayersCommand(vec![]);
-        for cpu_layer in cpu_layers.iter().rev() {
-            if cpu_layer.enabled {
-                draw_layers_command.0.push(*cpu_layer.id());
-            }
-        }
         composite_canvas.render_if_necessary(gpu_layers, draw_layers_command);
 
         let mut encoder =

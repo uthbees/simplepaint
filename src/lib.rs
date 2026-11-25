@@ -3,6 +3,8 @@ mod display;
 mod gpu;
 pub mod utils;
 
+use crate::app_state::{DEFAULT_CANVAS_HEIGHT, DEFAULT_CANVAS_WIDTH};
+use crate::utils::dimensions::DimensionsPxNonzero;
 use app_state::AppState;
 use display::Display;
 use egui::ViewportId;
@@ -43,8 +45,6 @@ impl ApplicationHandler for App {
         if self.app.is_some() {
             return;
         }
-
-        let app_state = AppState::new();
 
         let title_update_state = TitleUpdateState::default();
 
@@ -94,19 +94,16 @@ impl ApplicationHandler for App {
             .render_state()
             .expect("RenderState should be available after set_window");
 
-        // Upload the initial canvas to a wgpu texture.
-        // This section will need updating if it becomes possible to start the app with
-        // more than one layer.
-        assert_eq!(app_state.canvas.layers().len(), 1);
-        #[allow(clippy::cast_sign_loss)]
-        let initial_layer = &app_state.canvas.layers()[0];
+        let canvas_dimensions =
+            DimensionsPxNonzero::new(DEFAULT_CANVAS_WIDTH, DEFAULT_CANVAS_HEIGHT);
+
         let mut canvas_gpu = CanvasGpu::new(
             render_state,
-            app_state.canvas.dimensions(),
-            app_state.canvas_view.dimensions,
-            *initial_layer.id(),
-            &initial_layer.buffer_as_bytes(),
+            canvas_dimensions,
+            DimensionsPxNonzero::new(1, 1), // temp value for initialization
         );
+
+        let app_state = AppState::new(&mut canvas_gpu, canvas_dimensions);
 
         let mut display = Display::new(egui_ctx, &app_state);
         display.register_canvas_view_texture_id(canvas_gpu.canvas_view().texture_id());
@@ -191,8 +188,7 @@ impl AppInner {
 
         // Render the canvas texture onto the canvas view texture with the pan/zoom shader
         // and layer enable/disable configuration.
-        self.canvas_gpu
-            .render_canvas_view(self.app_state.canvas.layers());
+        self.canvas_gpu.render_canvas_view(&self.app_state.canvas);
 
         // Handle egui platform output (cursor, clipboard, etc.).
         self.egui_state.handle_platform_output_with_event_loop(
@@ -227,7 +223,11 @@ impl AppInner {
 
     fn update_window_title(&mut self) {
         let title_update_state = TitleUpdateState {
-            canvas_changed_since_last_save: self.app_state.canvas.changed_since_last_save,
+            canvas_changed_since_last_save: self
+                .app_state
+                .canvas
+                .layer_stack()
+                .changed_since_last_save,
             image_file_path: self.app_state.image_file_path.clone(),
         };
         if self.last_title_update_state != title_update_state {

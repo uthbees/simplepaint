@@ -4,10 +4,14 @@ use crate::utils::dimensions::DimensionsPxNonzero;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::Add;
-use tiny_skia::{Color, Pixmap};
+use std::sync::mpsc::Sender;
+use tiny_skia::{Color, Pixmap, PixmapPaint, Transform};
 
 /// Side length of every square tile, in pixels.
 pub const TILE_SIZE: u32 = 256;
+
+#[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
+pub struct LayerId(pub i32);
 
 /// Stores and manages the state of a canvas layer.
 ///
@@ -15,25 +19,41 @@ pub const TILE_SIZE: u32 = 256;
 /// never been painted are not allocated, and their color is determined by `default_color`.
 #[derive(Debug)]
 pub struct Layer {
+    free_layer_gpu_resources_tx: Sender<LayerId>,
+
     tiles: HashMap<TileCoord, Pixmap>,
     /// The color returned for any tile that has not yet been allocated.
-    default_color: Color,
+    pub default_color: Color,
     /// Dimensions of the layer. Should always be identical to the dimensions of the canvas.
     dimensions: DimensionsPxNonzero,
     pub dirty: bool,
     dirty_tiles: HashSet<TileCoord>,
 
-    id: i32,
+    id: LayerId,
     pub name: String,
     pub enabled: bool,
 }
 
+impl Drop for Layer {
+    fn drop(&mut self) {
+        // Free the layer's GPU resources, ignoring the error if CanvasGpu is already dropped.
+        let _ = self.free_layer_gpu_resources_tx.send(self.id);
+    }
+}
+
 impl Layer {
     /// Creates a new layer of a solid color with no tiles allocated.
-    pub fn new(dimensions: DimensionsPxNonzero, name: String, id: i32, color: Color) -> Self {
+    pub fn new(
+        canvas_gpu: &mut CanvasGpu,
+        dimensions: DimensionsPxNonzero,
+        name: String,
+        id: LayerId,
+        color: Color,
+    ) -> Self {
         let dimensions = dimensions.clamp_max_values(MAX_CANVAS_WIDTH, MAX_CANVAS_HEIGHT);
 
-        Self {
+        let created_layer = Self {
+            free_layer_gpu_resources_tx: canvas_gpu.layers().free_layer_gpu_resources_tx(),
             tiles: HashMap::new(),
             default_color: color,
             dimensions,
@@ -42,20 +62,28 @@ impl Layer {
             id,
             name,
             enabled: true,
-        }
+        };
+
+        canvas_gpu
+            .layers()
+            .add_layer(dimensions, id, &created_layer.buffer_as_bytes());
+
+        created_layer
     }
 
     /// Creates a new layer from a set of pre-existing tiles.
     ///
     /// Any tile coordinate not present in the map takes the color of `uninitialized_color`.
     pub fn new_from_tiles(
+        canvas_gpu: &mut CanvasGpu,
         dimensions: DimensionsPxNonzero,
         name: String,
-        id: i32,
+        id: LayerId,
         tiles: HashMap<TileCoord, Pixmap>,
         uninitialized_color: Color,
     ) -> Self {
         Self {
+            free_layer_gpu_resources_tx: canvas_gpu.layers().free_layer_gpu_resources_tx(),
             tiles,
             default_color: uninitialized_color,
             dimensions,
@@ -67,17 +95,13 @@ impl Layer {
         }
     }
 
-    pub fn id(&self) -> &i32 {
+    pub fn id(&self) -> &LayerId {
         &self.id
     }
 
     #[allow(dead_code)]
     pub fn dimensions(&self) -> DimensionsPxNonzero {
         self.dimensions
-    }
-
-    pub fn default_color(&self) -> Color {
-        self.default_color
     }
 
     pub fn tiles(&self) -> &HashMap<TileCoord, Pixmap> {
@@ -176,7 +200,7 @@ impl Layer {
         buffer
     }
 
-    pub fn resize(&mut self, new_dimensions: DimensionsPxNonzero, canvas_gpu: &mut CanvasGpu) {
+    pub fn resize(&mut self, canvas_gpu: &mut CanvasGpu, new_dimensions: DimensionsPxNonzero) {
         let new_dimensions = new_dimensions.clamp_max_values(MAX_CANVAS_WIDTH, MAX_CANVAS_HEIGHT);
 
         // Drop any tiles that will no longer fall within the canvas, and clear the non-visible
@@ -240,6 +264,33 @@ impl Layer {
         canvas_gpu
             .layers()
             .resize_layer(self.id, new_dimensions, &self.buffer_as_bytes());
+    }
+
+    /// Composites tiles from a layer above this one onto this layer.
+    /// Does not remove the tiles from the layer above.
+    pub fn composite_from_layer_above(&mut self, layer_above: &Layer) {
+        // For every tile in the merged layer, draw it onto the corresponding tile
+        // in the kept layer (creating it if needed).
+        for (coord, merged_tile) in layer_above.tiles() {
+            if let Some(base_tile) = self.get_tile_mut(*coord) {
+                base_tile.as_mut().draw_pixmap(
+                    0,
+                    0,
+                    merged_tile.as_ref(),
+                    &PixmapPaint::default(),
+                    Transform::identity(),
+                    None,
+                );
+            }
+        }
+    }
+
+    pub fn clear(&mut self) {
+        for tile_coord in self.tiles.keys() {
+            self.dirty_tiles.insert(*tile_coord);
+        }
+
+        self.tiles.clear();
     }
 
     fn drop_tiles_in_rect(&mut self, rect_min: TileCoord, rect_max: TileCoord) {

@@ -1,6 +1,6 @@
 use crate::app_state::AppState;
 use crate::app_state::canvas::MoveLayerDirection;
-use crate::app_state::canvas::layer::Layer;
+use crate::app_state::canvas::layer::{Layer, LayerId};
 use crate::gpu::CanvasGpu;
 use crate::gpu::layers::LayerResources;
 use egui::{
@@ -42,7 +42,7 @@ impl RightPanel {
                     .add_sized([60.0, 25.0], Button::new(("New Layer", icons::ICON_ADD)))
                     .clicked()
                 {
-                    app_state.canvas.add_layer(canvas_gpu);
+                    app_state.canvas.layer_stack_mut().add_layer(canvas_gpu);
                 }
             });
         });
@@ -55,8 +55,8 @@ impl RightPanel {
         app_state: &mut AppState,
         canvas_gpu: &mut CanvasGpu,
     ) {
-        let selected_layer = app_state.canvas.selected_layer_with_idx();
-        let layer_count = app_state.canvas.layers().len();
+        let selected_layer = app_state.canvas.layer_stack().selected_layer_with_idx();
+        let layer_count = app_state.canvas.layer_stack().layers().len();
         let top_layer_selected = selected_layer.is_some_and(|(index, _)| index == 0);
         let bottom_layer_selected =
             selected_layer.is_some_and(|(index, _)| index == layer_count - 1);
@@ -175,9 +175,10 @@ impl RightPanel {
         app_state: &mut AppState,
         canvas_gpu: &mut CanvasGpu,
     ) {
-        let layer_count = app_state.canvas.layers().len();
+        let layer_count = app_state.canvas.layer_stack().layers().len();
         let prev_selected_layer_id = app_state
             .canvas
+            .layer_stack()
             .selected_layer_with_idx()
             .map(|(_, layer)| *layer.id());
 
@@ -186,13 +187,17 @@ impl RightPanel {
             let mut layers_to_delete = vec![];
             let mut new_selected_layer_id = prev_selected_layer_id;
             let mut interactable_hovered = false;
-            let mut context_menu_command: Option<(LayerContextMenuCommand, i32)> = None;
+            let mut context_menu_command: Option<(LayerContextMenuCommand, LayerId)> = None;
 
             let response = dnd(ui, ui.make_persistent_id("layer_controls_dnd"))
                 .with_drag_axis(DragAxis::Vertical)
                 .with_return_animation_time(0.0)
                 .show(
-                    app_state.canvas.layers_iter_mut().enumerate(),
+                    app_state
+                        .canvas
+                        .layer_stack_mut()
+                        .layers_iter_mut()
+                        .enumerate(),
                     |ui, (layer_index, layer), handle, _| {
                         ui.vertical(|ui| {
                             handle.ui(ui, |ui| {
@@ -230,11 +235,17 @@ impl RightPanel {
                 );
 
             if response.is_drag_finished() {
-                app_state.canvas.update_layers_from_dnd_response(&response);
+                app_state
+                    .canvas
+                    .layer_stack_mut()
+                    .update_layers_from_dnd_response(&response);
             }
 
             if let Some(selected_layer_id) = new_selected_layer_id {
-                app_state.canvas.set_selected_layer(selected_layer_id);
+                app_state
+                    .canvas
+                    .layer_stack_mut()
+                    .set_selected_layer(selected_layer_id);
             }
 
             if let Some((command, layer_id)) = context_menu_command {
@@ -244,7 +255,7 @@ impl RightPanel {
             }
 
             for layer_id in layers_to_delete {
-                app_state.canvas.delete_layer(layer_id, canvas_gpu);
+                app_state.canvas.layer_stack_mut().delete_layer(layer_id);
             }
             // We have to set the cursor icon out here so that we override the cursor set by egui_dnd
             // instead of the other way around.
@@ -285,7 +296,7 @@ impl RightPanel {
                         } else {
                             ui.allocate_exact_size(Vec2::splat(24.0), Sense::hover());
                             eprintln!(
-                                "Failed to get resources for layer {} thumbnail.",
+                                "Failed to get resources for layer {:?} thumbnail.",
                                 layer.id()
                             );
                         }
@@ -455,24 +466,26 @@ impl RightPanel {
         app_state: &mut AppState,
         canvas_gpu: &mut CanvasGpu,
         command: &LayerContextMenuCommand,
-        layer_id: i32,
+        layer_id: LayerId,
     ) {
-        let canvas = &mut app_state.canvas;
+        let layer_stack = &mut app_state.canvas.layer_stack_mut();
 
         let result: Result<(), String> = match command {
-            LayerContextMenuCommand::Duplicate => canvas.duplicate_layer(canvas_gpu, layer_id),
+            LayerContextMenuCommand::Duplicate => layer_stack.duplicate_layer(canvas_gpu, layer_id),
             LayerContextMenuCommand::MergeUp => {
-                canvas.merge_layer_to_adjacent(layer_id, &MoveLayerDirection::Up)
+                layer_stack.merge_layer_to_adjacent(layer_id, &MoveLayerDirection::Up)
             }
             LayerContextMenuCommand::MergeDown => {
-                canvas.merge_layer_to_adjacent(layer_id, &MoveLayerDirection::Down)
+                layer_stack.merge_layer_to_adjacent(layer_id, &MoveLayerDirection::Down)
             }
-            LayerContextMenuCommand::MoveUp => canvas.move_layer(layer_id, &MoveLayerDirection::Up),
+            LayerContextMenuCommand::MoveUp => {
+                layer_stack.move_layer(layer_id, &MoveLayerDirection::Up)
+            }
             LayerContextMenuCommand::MoveDown => {
-                canvas.move_layer(layer_id, &MoveLayerDirection::Down)
+                layer_stack.move_layer(layer_id, &MoveLayerDirection::Down)
             }
             LayerContextMenuCommand::Rename => {
-                canvas.set_selected_layer(layer_id);
+                layer_stack.set_selected_layer(layer_id);
                 self.is_editing_selected_layer_name = true;
                 Ok(())
             }

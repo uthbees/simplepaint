@@ -1,9 +1,9 @@
+use crate::app_state::canvas::layer::LayerId;
 use crate::gpu::layers::Layers;
 use crate::utils::dimensions::DimensionsPxNonzero;
 use egui_wgpu::RenderState;
 use image::ImageBuffer;
 use std::iter;
-use std::path::Path;
 use wgpu::PipelineCompilationOptions;
 
 /// The composite canvas is the texture containing the canvas data
@@ -18,7 +18,7 @@ pub struct CompositeCanvas {
 
 /// An array of layer ids specifying which layers to draw and in what order.
 #[derive(PartialEq)]
-pub struct DrawLayersCommand(pub Vec<i32>);
+pub struct DrawLayersCommand(pub Vec<LayerId>);
 
 impl CompositeCanvas {
     pub fn new(
@@ -156,7 +156,9 @@ impl CompositeCanvas {
                     render_pass.set_bind_group(0, &layer.composition_bind_group, &[]);
                     render_pass.draw(0..3, 0..1);
                 } else {
-                    eprintln!("GPU-side layer {layer_id} not found, skipping rendering for layer.");
+                    eprintln!(
+                        "GPU-side layer {layer_id:?} not found, skipping rendering for layer."
+                    );
                 }
             }
         }
