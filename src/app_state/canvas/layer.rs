@@ -286,6 +286,10 @@ impl Layer {
     }
 
     pub fn clear(&mut self) {
+        if !self.tiles.is_empty() {
+            self.dirty = true;
+        }
+
         for tile_coord in self.tiles.keys() {
             self.dirty_tiles.insert(*tile_coord);
         }
